@@ -13,7 +13,8 @@
     "@beidou/core": "file:../beidou-core",
     "@beidou/contracts": "file:../domain-contracts",
     "mysql2": "3.11.0",
-    "@beidou/ontology-schema": "file:../ontology-schema"
+    "@beidou/ontology-schema": "file:../ontology-schema",
+    "yaml": "2.5.0"
   },
   "type": "module"
 }

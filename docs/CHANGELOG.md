@@ -185,3 +185,23 @@ Phase 3:8 业务工具全量接线 dsh 插件(V1 PASS with tools)。
 - esbuild 打包链(scripts/build-plugin.mjs):bundle TS→单文件 JS(423KB),解决 dsh ESM loader 不认 TS 扩展名 import 的问题(= 评审 P0-3 "引用稳定产物")
 - `npm run dsh:poc` 现在自动:plugin:build → generate-cordis-config → dsh web --patch
 - 199 测试全绿(185 core + 12 desktop + 2 contracts);V1 PASS(8 工具装载 + HTTP + 无 loader 错误)
+
+## 0.11.0(2026-09-20)
+
+外部 code review(ccfb2dd)P1 七项修复 + P0 三项。
+
+### P1 修复(Phase 3 工具完整性)
+- P1-1 apply() 改同步+内联 async(带错误传播,非静默;Cordis 不 await async apply)
+- P1-3 移除虚假 "system prompt injected" 日志(Phase 4 接入)
+- P1-5 工具参数补齐:query_metrics+timeRange / query_dataset+dims+timeRange+aggregates+where+groupBy+orderBy / diagnose_metric+timeRange+dims+thresholdPct
+- P1-6 tsconfig paths 统一为 @beidou-core/*
+- P1-7 yaml 加插件直接依赖
+- dsh DSL 硬约束补全:全参数 required:true / object 类型必须显式 additionalProperties / output schema error 必须 required(4 个新 DSL 发现)
+
+### P0 修复
+- P0-6 sessionId 动态生成(dsh-${timestamp}-${random})
+- P0-3(部分)config:save 密钥覆盖风险待修(需要结构化编辑方案,Phase 4)
+
+### 工程改进
+- P2-1 dsh:probe 自动 plugin:build → generate-cordis-config → probe
+- probe 检查改为 "8 business tools registered"(实际工具注册成功)

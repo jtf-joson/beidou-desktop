@@ -13,17 +13,11 @@
       "node"
     ],
     "paths": {
-      "@beidou/core/src/*": [
+      "@beidou-core/*": [
         "../beidou-core/src/*"
       ],
-      "@beidou/contracts": [
-        "../domain-contracts/src/index.ts"
-      ],
-      "@beidou/ontology-schema/src/*": [
-        "../ontology-schema/src/*"
-      ],
-      "*": [
-        "../../node_modules/*"
+      "@beidou-ontology": [
+        "../ontology-schema/src/index.ts"
       ]
     },
     "moduleDetection": "force",

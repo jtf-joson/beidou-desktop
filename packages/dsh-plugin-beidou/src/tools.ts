@@ -8,7 +8,7 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createTools, type ToolContext, type ToolSet } from "@beidou-core/tools/tools";
 import { TOOL_OUTPUT_SCHEMA, renderToolResponse, toToolValue } from "./adapter";
 
-type ParamSpec = Record<string, { type: "string" | "number" | "boolean" | "array" | "object"; required: boolean; description?: string }>;
+type ParamSpec = Record<string, { type: "string" | "number" | "boolean" | "array" | "object"; required: boolean; description?: string; additionalProperties?: boolean }>;
 
 function toolDef(
   name: string,
@@ -38,9 +38,9 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
     "语义检索:在指标/数据集/术语/本体/物理表中查找候选,返回路由建议。回答任何数据问题前必须先调用。",
     {
       query: { type: "string", required: true, description: "用户问题或关键词" },
-      limit: { type: "number", required: false, description: "返回候选数上限(默认 8)" },
+      limit: { type: "number", required: true, description: "返回候选数上限;不关心则传 0" },
     },
-    async (args) => tools.search_semantics({ query: args.query as never, limit: args.limit as never }),
+    async (args) => tools.search_semantics({ query: args.query as never, limit: (args.limit === 0 ? undefined : args.limit) as never }),
   ));
 
   // 2. query_metrics
@@ -49,9 +49,10 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
     "查指标:按口径一致的编译 SQL 计算指标值(时间范围与维度可选)。",
     {
       metricName: { type: "string", required: true, description: "指标英文名(来自检索)" },
-      dims: { type: "array", required: false, description: "分组维度列表" },
+      dims: { type: "array", required: true, description: "分组维度列表;不需要分组传 []" },
+      timeRange: { type: "object", required: true, description: "时间范围 {start, end};不限传 {}", additionalProperties: true },
     },
-    async (args) => tools.query_metrics({ metricName: args.metricName as never, dims: (args.dims ?? []) as never }),
+    async (args) => tools.query_metrics({ metricName: args.metricName as never, dims: args.dims as never, timeRange: (args.timeRange && Object.keys(args.timeRange as never).length > 0 ? args.timeRange : undefined) as never }),
   ));
 
   // 3. query_dataset
@@ -60,10 +61,16 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
     "数据集查询。mode=drilldown 口径一致下钻;mode=explore 受控明细分析。",
     {
       mode: { type: "string", required: true, description: "drilldown 或 explore" },
-      metricName: { type: "string", required: false, description: "drilldown:指标名" },
-      table: { type: "string", required: false, description: "explore:物理表全名" },
-      selectColumns: { type: "array", required: false, description: "explore:选择的列" },
-      limit: { type: "number", required: false, description: "explore:行数上限" },
+      metricName: { type: "string", required: true, description: "drilldown:指标名;explore 传空串" },
+      dims: { type: "array", required: true, description: "drilldown:分组维度;无则传 []" },
+      timeRange: { type: "object", required: true, description: "drilldown:时间范围;无则传 {}", additionalProperties: true },
+      table: { type: "string", required: true, description: "explore:物理表全名;drilldown 传空串" },
+      selectColumns: { type: "array", required: true, description: "explore:选择的列;无则传 []" },
+      aggregates: { type: "array", required: true, description: "explore:聚合定义;无则传 []" },
+      where: { type: "array", required: true, description: "explore:过滤条件;无则传 []" },
+      groupBy: { type: "array", required: true, description: "explore:分组列;无则传 []" },
+      orderBy: { type: "object", required: true, description: "explore:排序;无则传 {}", additionalProperties: true },
+      limit: { type: "number", required: true, description: "explore:行数上限;默认传 200" },
     },
     async (args) => tools.query_dataset(args as never),
   ));
@@ -84,8 +91,11 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
     "智能诊断与归因:两期总量对比、异常检测、维度贡献拆解(Top 贡献者),返回结构化结果。",
     {
       metricName: { type: "string", required: true, description: "指标名" },
+      timeRange: { type: "object", required: true, description: "时间范围 {start, end};不限传 {}", additionalProperties: true },
+      dims: { type: "array", required: true, description: "归因维度列表;用指标默认则传 []" },
+      thresholdPct: { type: "number", required: true, description: "异常阈值百分比;用默认 10 则传 0" },
     },
-    async (args) => tools.diagnose_metric({ metricName: args.metricName as never }),
+    async (args) => tools.diagnose_metric({ metricName: args.metricName as never, timeRange: (args.timeRange && Object.keys(args.timeRange as never).length > 0 ? args.timeRange : undefined) as never, dims: (Array.isArray(args.dims) && (args.dims as unknown[]).length > 0 ? args.dims : undefined) as never, thresholdPct: (args.thresholdPct === 0 ? undefined : args.thresholdPct) as never }),
   ));
 
   // 6. search_knowledge
@@ -113,8 +123,8 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
     "list_ontology",
     "本体导航:按子域列出 class(属性/指标/表指针)、action(诊断入口)结构。",
     {
-      subdomain: { type: "string", required: false, description: "子域 ID(如 store-ops);不传返回全部" },
+      subdomain: { type: "string", required: true, description: "子域 ID(如 store-ops);返回全部传空串" },
     },
-    async (args) => tools.list_ontology({ subdomain: (args.subdomain ?? undefined) as never }),
+    async (args) => tools.list_ontology({ subdomain: (args.subdomain === '' ? undefined : args.subdomain) as never }),
   ));
 }

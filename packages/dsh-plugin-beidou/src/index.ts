@@ -16,39 +16,37 @@ export const inject = ["tools"];
 
 export function apply(ctx: Context) {
   const workspace = process.env.BEIDOU_WORKSPACE ?? join(homedir(), "Library/Application Support/北斗work/workspace");
-  console.log("[beidou-work] plugin loaded (phase-3, workspace:", workspace, ")");
+  console.log("[beidou-work] plugin loading (workspace:", workspace, ")");
 
+  // P1-1:同步 apply(Cordis 不 await async);异步初始化 + 错误传播(非静默)
   void (async () => {
-    try {
-      const built = await buildPluginContext({ workspace });
-      const toolCtx: ToolContext = {
-        store: built.workspace.store,
-        assets: built.workspace.assets,
-        routerConfig: { metricScoreThreshold: 50 },
-        guardPolicy: built.toolContextOverrides.guardPolicy,
-        metricOnline: false,
-        starrocksQuery: built.toolContextOverrides.starrocksQuery,
-        audit: built.toolContextOverrides.auditSink,
-        sessionId: "dsh-beidou",
-        semanticVersion: built.workspace.semanticVersion,
-        metricsByCode: built.workspace.metricsByCode,
-        ontology: built.workspace.ontology,
-        bindings: built.workspace.bindings,
-        knowledge: built.workspace.knowledge,
-        playbooks: built.workspace.playbooks,
-        entities: built.workspace.entities,
-        dataSource: built.toolContextOverrides.dataSource,
-      };
+  const built = await buildPluginContext({ workspace });
+  const sessionId = `dsh-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const toolCtx: ToolContext = {
+    store: built.workspace.store,
+    assets: built.workspace.assets,
+    routerConfig: { metricScoreThreshold: 50 },
+    guardPolicy: built.toolContextOverrides.guardPolicy,
+    metricOnline: false,
+    starrocksQuery: built.toolContextOverrides.starrocksQuery,
+    audit: built.toolContextOverrides.auditSink,
+    sessionId,
+    semanticVersion: built.workspace.semanticVersion,
+    metricsByCode: built.workspace.metricsByCode,
+    ontology: built.workspace.ontology,
+    bindings: built.workspace.bindings,
+    knowledge: built.workspace.knowledge,
+    playbooks: built.workspace.playbooks,
+    entities: built.workspace.entities,
+    dataSource: built.toolContextOverrides.dataSource,
+  };
 
-      // 注册 8 个业务工具
-      registerBusinessTools(ctx, toolCtx);
+  registerBusinessTools(ctx, toolCtx);
+  void buildPluginPrompt;
 
-      // systemPrompt:Phase 3 暂跳(工具描述已含路由指引;后续接 ctx.systemPrompt 正确方法)
-      void buildPluginPrompt;
-
-      console.log("[beidou-work] 8 business tools registered, system prompt injected, mock:", built.isMock);
-    } catch (e) {
-      console.error("[beidou-work] context build failed:", e);
-    }
-  })();
+  console.log("[beidou-work] 8 business tools registered, mock:", built.isMock);
+  })().catch((e) => {
+    console.error("[beidou-work] FATAL: context build failed:", e);
+    throw e; // 让插件启动失败(非静默)
+  });
 }

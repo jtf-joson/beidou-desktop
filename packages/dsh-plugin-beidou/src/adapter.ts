@@ -17,7 +17,7 @@ export const TOOL_OUTPUT_SCHEMA: AdapterSchema = {
   properties: {
     ok: { type: "boolean", required: true },
     text: { type: "string", required: true },
-    error: { type: "string", required: false },
+    error: { type: "string", required: true }, // dsh DSL 要求全必填;成功时为空串
   },
 };
 
@@ -27,5 +27,5 @@ export function renderToolResponse(_args: Record<string, unknown>, value: { ok: 
 
 /** 把 ToolResponse 包装为 defineTool 的 output 值 */
 export function toToolValue(resp: { ok: boolean; text: string; error?: string }): { ok: boolean; text: string; error?: string } {
-  return { ok: resp.ok, text: resp.text, error: resp.error };
+  return { ok: resp.ok, text: resp.text, error: resp.error ?? "" };
 }
