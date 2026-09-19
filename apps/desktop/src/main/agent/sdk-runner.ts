@@ -110,7 +110,14 @@ export async function runSdkAgent(input: {
     options: {
       cwd: input.cwd,
       systemPrompt: input.systemPrompt,
-      env: { ...process.env, ...input.env } as Record<string, string>,
+      env: {
+        // P0-4:allowlist 而非全量 process.env(防内网凭据泄漏到 Agent SDK)
+        PATH: process.env.PATH ?? "",
+        HOME: process.env.HOME ?? "",
+        LANG: process.env.LANG ?? "",
+        TERM: process.env.TERM ?? "",
+        ...input.env,
+      } as Record<string, string>,
       mcpServers: { "data-workbench": server },
       allowedTools: [
         "mcp__data-workbench__search_semantics", "mcp__data-workbench__query_metrics",

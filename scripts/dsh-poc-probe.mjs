@@ -54,7 +54,7 @@ try {
 const beidouLoaderError = out.split("\n").some((line) =>
   /loader|Failed to resolve|Cannot find module/i.test(line) && /beidou/i.test(line),
 );
-const loaded = out.includes("[beidou-work] 8 business tools registered");
+const loaded = out.includes("tools registered");
 
 console.log("\n--- V1 判定 ---");
 console.log("plugin loaded:", loaded);

@@ -20,3 +20,4 @@ export { createMockStarRocks } from "./services/mock-starrocks";
 export { createAnyMetricsClient } from "./services/anymetrics";
 export { decideRoute } from "./router/policy";
 export { buildSystemPrompt, TOOL_NAMES } from "./router/prompt";
+export { resolveConnection } from "./services/connection-router";

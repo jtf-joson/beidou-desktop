@@ -13,7 +13,7 @@ export interface Identity {
   name?: string;
   email?: string;
   expiresAt?: string;
-  source: "ept-session" | "none";
+  source: "ept-session" | "idaas-token" | "none";
 }
 
 interface EptSession {

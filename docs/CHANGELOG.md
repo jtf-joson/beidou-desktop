@@ -205,3 +205,14 @@ Phase 3:8 业务工具全量接线 dsh 插件(V1 PASS with tools)。
 ### 工程改进
 - P2-1 dsh:probe 自动 plugin:build → generate-cordis-config → probe
 - probe 检查改为 "8 business tools registered"(实际工具注册成功)
+
+## 0.12.0(2026-09-20)
+
+Phase 4:身份工具 ×2 + connection-router + 遗留 P0 修复。
+
+- **beidou_login / beidou_auth_status**:IDaaS 登录(登录链接→浏览器确认→token 本地 ~/.beidou/auth/);app_id=beidou-desktop, open_id=owner, single-user-poc
+- **connection-router**(core, TDD 6 用例):四级路由(精确表 > schema 前缀 > dataset 卡片 > default);未命中拒绝
+- **P0-2 修复**:effectiveIdentity() 统一 isExpired 检查,过期身份 → 匿名 → defaultRole
+- **P0-4 修复**:SDK env allowlist(PATH/HOME/LANG/TERM + 模型变量,不传全量 process.env)
+- V1 PASS:8 business + 2 identity tools(10 个工具)
+- 205 测试全绿(191 core + 12 desktop + 2 contracts)

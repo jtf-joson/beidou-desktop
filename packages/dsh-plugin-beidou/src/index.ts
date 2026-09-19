@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { registerBusinessTools } from "./tools";
+import { registerIdentityTools } from "./idaas-tool";
 import { buildPluginContext } from "./context";
 import { buildPluginPrompt } from "./prompt";
 import type { ToolContext } from "@beidou-core/tools/tools";
@@ -42,9 +43,10 @@ export function apply(ctx: Context) {
   };
 
   registerBusinessTools(ctx, toolCtx);
+  registerIdentityTools(ctx); // Phase 4:身份工具 ×2
   void buildPluginPrompt;
 
-  console.log("[beidou-work] 8 business tools registered, mock:", built.isMock);
+  console.log("[beidou-work] 8 business + 2 identity tools registered, mock:", built.isMock);
   })().catch((e) => {
     console.error("[beidou-work] FATAL: context build failed:", e);
     throw e; // 让插件启动失败(非静默)

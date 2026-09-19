@@ -102,18 +102,26 @@ function refreshIdentity(): Identity | null {
 }
 
 function effectiveIdentity(): { identity: Identity | null; source: string } {
+  // P0-2 修复:统一过期检查,过期身份等同匿名
   if (idaasToken?.authorization) {
-    return {
-      identity: {
-        username: idaasToken.user_name || idaasToken.open_id,
-        name: idaasToken.user_name,
-        expiresAt: idaasToken.expires_at,
-        source: "ept-session",
-      },
+    const idaasId: Identity = {
+      username: idaasToken.user_name || idaasToken.open_id,
+      name: idaasToken.user_name,
+      expiresAt: idaasToken.expires_at,
       source: "idaas-token",
     };
+    if (!isExpired(idaasId)) {
+      return { identity: idaasId, source: "idaas-token" };
+    }
+    console.warn("[identity] IDaaS token expired, falling through");
   }
-  return { identity, source: identity ? "ept-session" : "none" };
+  if (identity && !isExpired(identity)) {
+    return { identity, source: "ept-session" };
+  }
+  if (identity) {
+    console.warn("[identity] ept identity expired, treating as anonymous");
+  }
+  return { identity: null, source: "none" };
 }
 
 // ---------------------------------------------------------------------------
