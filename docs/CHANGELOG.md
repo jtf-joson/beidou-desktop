@@ -174,3 +174,14 @@ Phase 2:Ontology V1(schema+parser+validator+bindings+list_ontology 工具)。
 - EXPLAIN/DESC 表不再跳过白名单:EXPLAIN SELECT * FROM evil.table 被拒绝;SHOW(无表引用)仍放行
 - SELECT * + 敏感列配置 → 拒绝(无法验证 * 不含敏感列)
 - 新增回归测试:comma+alias、SELECT * + sensitive
+
+## 0.10.0(2026-09-19)
+
+Phase 3:8 业务工具全量接线 dsh 插件(V1 PASS with tools)。
+
+- dsh-plugin-beidou 升级为 Phase 3:8 个业务工具全量注册(search_semantics / query_metrics / query_dataset / clarify / diagnose_metric / search_knowledge / read_playbook / list_ontology)
+- context.ts:ToolContext 组装(loadWorkspace + mock/mysql 连接器 + 真实 auditSink);workspace 路径从 BEIDOU_WORKSPACE 环境变量获取
+- adapter.ts:统一 output schema(ok/text/error)+ render;toolDef 泛型包装
+- esbuild 打包链(scripts/build-plugin.mjs):bundle TS→单文件 JS(423KB),解决 dsh ESM loader 不认 TS 扩展名 import 的问题(= 评审 P0-3 "引用稳定产物")
+- `npm run dsh:poc` 现在自动:plugin:build → generate-cordis-config → dsh web --patch
+- 199 测试全绿(185 core + 12 desktop + 2 contracts);V1 PASS(8 工具装载 + HTTP + 无 loader 错误)

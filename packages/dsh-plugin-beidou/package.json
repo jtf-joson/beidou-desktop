@@ -11,7 +11,9 @@
     "@deepseek-ai/cordis": "4.0.2",
     "@deepseek-ai/dsh-tools": "0.1.5-rc.2",
     "@beidou/core": "file:../beidou-core",
-    "@beidou/contracts": "file:../domain-contracts"
+    "@beidou/contracts": "file:../domain-contracts",
+    "mysql2": "3.11.0",
+    "@beidou/ontology-schema": "file:../ontology-schema"
   },
   "type": "module"
 }

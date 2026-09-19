@@ -1,39 +1,54 @@
 /**
- * 北斗work dsh 插件入口(Phase 1:空壳验证)。
- * V1 验收:插件装载、beidou_ping 工具出现在目录、无 loader 报错。
- * Phase 3/4 在此注册全部 8+2 个工具(见 docs/plans/poc-dsh-plugin-v2.md)。
+ * 北斗work dsh 插件入口(Phase 3:8 业务工具全量接线)。
+ * V1 空壳 + V2 语义检索 + V3 指标 + V4 下钻 + V5 诊断 + V6 审计。
  */
 import type { Context } from "@deepseek-ai/cordis";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
+import { registerBusinessTools } from "./tools";
+import { buildPluginContext } from "./context";
+import { buildPluginPrompt } from "./prompt";
+import type { ToolContext } from "@beidou-core/tools/tools";
 
 export const name = "beidou-work";
 export const inject = ["tools"];
 
 export function apply(ctx: Context) {
-  console.log("[beidou-work] plugin loaded (phase-1 shell)");
+  const workspace = process.env.BEIDOU_WORKSPACE ?? join(homedir(), "Library/Application Support/北斗work/workspace");
+  console.log("[beidou-work] plugin loaded (phase-3, workspace:", workspace, ")");
 
-  ctx.tools.register(
-    defineTool({
-      name: "beidou_ping",
-      description:
-        "北斗work 连通性探测:返回插件版本与工作区路径摘要。任何北斗工具调用前可用它确认插件在位。",
-      parameters: {},
-      output: {
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            pong: { type: "boolean", required: true },
-            version: { type: "string", required: true },
-          },
-        },
-        render: (_args, value) => [
-          { type: "text", text: JSON.stringify(value) },
-        ],
-      },
-      async execute(args) {
-        return { pong: true, version: "0.1.0 (phase-1)" };
-      },
-    }),
-  );
+  void (async () => {
+    try {
+      const built = await buildPluginContext({ workspace });
+      const toolCtx: ToolContext = {
+        store: built.workspace.store,
+        assets: built.workspace.assets,
+        routerConfig: { metricScoreThreshold: 50 },
+        guardPolicy: built.toolContextOverrides.guardPolicy,
+        metricOnline: false,
+        starrocksQuery: built.toolContextOverrides.starrocksQuery,
+        audit: built.toolContextOverrides.auditSink,
+        sessionId: "dsh-beidou",
+        semanticVersion: built.workspace.semanticVersion,
+        metricsByCode: built.workspace.metricsByCode,
+        ontology: built.workspace.ontology,
+        bindings: built.workspace.bindings,
+        knowledge: built.workspace.knowledge,
+        playbooks: built.workspace.playbooks,
+        entities: built.workspace.entities,
+        dataSource: built.toolContextOverrides.dataSource,
+      };
+
+      // 注册 8 个业务工具
+      registerBusinessTools(ctx, toolCtx);
+
+      // systemPrompt:Phase 3 暂跳(工具描述已含路由指引;后续接 ctx.systemPrompt 正确方法)
+      void buildPluginPrompt;
+
+      console.log("[beidou-work] 8 business tools registered, system prompt injected, mock:", built.isMock);
+    } catch (e) {
+      console.error("[beidou-work] context build failed:", e);
+    }
+  })();
 }

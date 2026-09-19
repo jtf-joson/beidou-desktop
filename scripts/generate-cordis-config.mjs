@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const tpl = readFileSync(resolve(root, "packages/dsh-plugin-beidou/cordis.example.yml"), "utf-8");
-const entry = resolve(root, "packages/dsh-plugin-beidou/src/index.ts");
+const entry = resolve(root, "packages/dsh-plugin-beidou/dist/index.js");
 const out = resolve(root, ".tmp/cordis.local.yml");
 mkdirSync(resolve(root, ".tmp"), { recursive: true });
 writeFileSync(out, tpl.replaceAll("__BEIDOU_PLUGIN_ENTRY__", entry), "utf-8");

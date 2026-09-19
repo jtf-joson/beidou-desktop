@@ -12,11 +12,13 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "desktop:dev": "npm run dev --workspace @beidou/desktop",
     "desktop:dist": "npm run dist --workspace @beidou/desktop",
-    "dsh:poc": "node scripts/generate-cordis-config.mjs && dsh web --patch .tmp/cordis.local.yml",
+    "dsh:poc": "node scripts/build-plugin.mjs && node scripts/generate-cordis-config.mjs && dsh web --patch .tmp/cordis.local.yml",
     "dsh:probe": "node scripts/dsh-poc-probe.mjs",
-    "test:coverage": "npm run test:coverage --workspace @beidou/core --if-present"
+    "test:coverage": "npm run test:coverage --workspace @beidou/core --if-present",
+    "plugin:build": "node scripts/build-plugin.mjs"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh": "0.1.5-rc.2"
+    "@deepseek-ai/dsh": "0.1.5-rc.2",
+    "esbuild": "^0.28.2"
   }
 }

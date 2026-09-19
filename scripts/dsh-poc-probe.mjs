@@ -5,7 +5,8 @@
  */
 import { spawn, execSync } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { existsSync, rmSync } from "node:fs";
 
@@ -23,7 +24,7 @@ await sleep(1000);
 const npxBin = process.platform === "win32" ? "npx.cmd" : "npx";
 const proc = spawn(npxBin, ["dsh", "web", "--patch", patchFile, "--no-open"], {
   cwd: root,
-  env: process.env,
+  env: { ...process.env, BEIDOU_WORKSPACE: process.env.BEIDOU_WORKSPACE ?? join(homedir(), "Library/Application Support/北斗work/workspace") },
   stdio: ["ignore", "pipe", "pipe"],
   detached: true, // 进程组(SIGTERM 能到达 dsh 孙进程)
 });
