@@ -15,6 +15,8 @@ import { buildEvidenceItem } from "../evidence/pack";
 import { diagnoseMetric, type TimeWindow } from "../analysis/diagnosis";
 import { modelsForMetric, type EntitiesFile } from "../semantics/entities";
 import { searchKnowledge } from "./knowledge";
+import type { ParsedOntology } from "../../../ontology-schema/src/types";
+import type { Bindings } from "../../../ontology-schema/src/bindings";
 
 export interface ToolContext {
   store: SemanticStore;
@@ -39,6 +41,10 @@ export interface ToolContext {
   dataSource?: "mock" | "real";
   /** 实体与业务模型(诊断维度选择与检索) */
   entities?: EntitiesFile;
+  /** 本体(ontology.yaml 解析结果) */
+  ontology?: ParsedOntology;
+  /** 绑定层(bindings/*.yaml) */
+  bindings?: Bindings;
   /** 业务知识库(空间 knowledge/*.md;检索给 Agent 参考) */
   knowledge?: Array<{ name: string; content: string }>;
   /** 业务 Playbook(空间 playbooks/*.md;按名读取) */
@@ -110,6 +116,7 @@ export interface ToolSet {
   }): Promise<ToolResponse>;
   search_knowledge(input: { query: string }): Promise<ToolResponse>;
   read_playbook(input: { name: string }): Promise<ToolResponse>;
+  list_ontology(input: { subdomain?: string }): Promise<ToolResponse>;
 }
 
 export function createTools(ctx: ToolContext): ToolSet {
@@ -190,6 +197,34 @@ export function createTools(ctx: ToolContext): ToolSet {
             score: 65, why: "业务模型命中",
             dimensions: m.dimensions,
           });
+        }
+      }
+      // 本体命中(class/property/relation/action + 子域归属)
+      const ont = ctx.ontology;
+      if (ont) {
+        for (const cls of ont.classes) {
+          const nameL = cls.name.toLowerCase();
+          const descL = (cls.description ?? "").toLowerCase();
+          const propL = cls.properties.map((p) => `${p.id} ${p.name ?? ""}`.toLowerCase()).join(" ");
+          if (nameL.includes(q) || descL.includes(q) || propL.includes(q)) {
+            hits.push({
+              kind: "entity", id: cls.id, name: cls.name,
+              displayName: cls.description, score: 70, why: `本体 class(${cls.subdomain})`,
+              physicalTables: cls.metrics && cls.metrics.length > 0 ? undefined : undefined,
+            });
+          }
+        }
+        for (const rel of ont.relations) {
+          if (rel.id.toLowerCase().includes(q) || (rel.name ?? "").toLowerCase().includes(q)) {
+            hits.push({ kind: "entity", id: rel.id, name: rel.name ?? rel.id, score: 55, why: "本体 relation" });
+          }
+        }
+        for (const act of ont.actions) {
+          if (act.name.toLowerCase().includes(q) || act.id.toLowerCase().includes(q)) {
+            hits.push({
+              kind: "entity", id: act.id, name: act.name, score: 65, why: `本体 action(${act.subdomain})`,
+            });
+          }
         }
       }
       hits.sort((a, b) => b.score - a.score);
@@ -346,6 +381,39 @@ export function createTools(ctx: ToolContext): ToolSet {
       return {
         ok: true,
         text: JSON.stringify({ hits, hint: hits.length === 0 ? "知识库无命中;可用业务常识回答但需注明未经知识库背书" : "按相关性排序的业务知识摘录" }, null, 1),
+        evidence: [evidence],
+      };
+    },
+
+    async list_ontology({ subdomain: subFilter }) {
+      await audit(ctx, "tool_call", `本体导航:${subFilter ?? "全部"}`);
+      const ont = ctx.ontology;
+      if (!ont || ont.classes.length === 0) {
+        return {
+          ok: false, text: "", evidence: [],
+          error: "ontology.yaml 为空或未配置;请先在 semantics/ontology.yaml 定义业务域本体",
+        };
+      }
+      const subs = subFilter ? ont.domain.subdomains.filter((s) => s.id === subFilter || s.name === subFilter) : ont.domain.subdomains;
+      const result = subs.map((sub) => ({
+        subdomain: sub.id,
+        name: sub.name,
+        status: sub.status,
+        topics: sub.topics,
+        classes: ont.classes.filter((c) => c.subdomain === sub.id).map((c) => ({
+          id: c.id, name: c.name, topic: c.topic, key: c.key,
+          properties: c.properties.map((p) => p.id),
+          metrics: c.metrics ?? [],
+          table: ctx.bindings?.datasets[c.id]?.table,
+        })),
+        actions: ont.actions.filter((a) => a.subdomain === sub.id).map((a) => ({
+          id: a.id, name: a.name, subject: a.subject, metrics: a.metrics, dims: a.dims,
+        })),
+      }));
+      const evidence = buildEvidenceItem({ kind: "semantic_search", title: `本体:${subFilter ?? "全部子域"}`, semanticVersion: ctx.semanticVersion });
+      return {
+        ok: true,
+        text: JSON.stringify({ domain: ont.domain.id, version: ont.version, subdomains: result }, null, 1),
         evidence: [evidence],
       };
     },

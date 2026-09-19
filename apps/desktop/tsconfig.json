@@ -28,6 +28,12 @@
       ],
       "@beidou/core": [
         "../../packages/beidou-core/src/index.ts"
+      ],
+      "@beidou/ontology-schema/src": [
+        "../../packages/ontology-schema/src/index.ts"
+      ],
+      "@beidou/ontology-schema/src/*": [
+        "../../packages/ontology-schema/src/*"
       ]
     }
   },

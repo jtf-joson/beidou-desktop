@@ -1,0 +1,20 @@
+{
+  "name": "@beidou/ontology-schema",
+  "version": "0.1.0",
+  "private": true,
+  "description": "北斗work 本体 schema:parseOntology(fail-open)/ validateOntology(fail-closed)/ bindings 装载 / entities 迁移",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "yaml": "2.5.0"
+  },
+  "devDependencies": {
+    "vitest": "2.1.9",
+    "@types/node": "22.5.0"
+  }
+}

@@ -12,6 +12,7 @@ import { parseMembers, type SpaceMembership, type Role } from "@beidou/core/src/
 import type { GlossaryTerm, MetricMirror, SemanticAssets } from "@beidou/core/src/types";
 import { readdirSync } from "node:fs";
 import { parseEntities, type EntitiesFile } from "@beidou/core/src/semantics/entities";
+import { parseOntology, loadBindings, type ParsedOntology, type Bindings } from "@beidou/ontology-schema/src";
 
 export interface ModelConfig {
   provider?: "deepseek-anthropic";
@@ -84,8 +85,12 @@ export interface LoadedWorkspace {
   playbooks: Array<{ name: string; content: string }>;
   /** 实体与业务模型(semantics/entities.yaml 原文,轻量语义资产) */
   entitiesYaml: string;
-  /** 解析后的实体与业务模型 */
+  /** 解析后的实体与业务模型(旧,Phase 2 后由 ontology 取代) */
   entities: EntitiesFile;
+  /** 本体(ontology.yaml,ParsedOntology) */
+  ontology: ParsedOntology;
+  /** 绑定层(bindings/*.yaml) */
+  bindings: Bindings;
 }
 
 // 北斗导出缓存:key=import 目录,值=解析结果;保存术语/知识等不触发重 parse
@@ -210,6 +215,18 @@ export function loadWorkspace(dir: string): LoadedWorkspace {
   const playbooks = readMdDir("playbooks");
   const entitiesYaml = readIfExists(join(dir, "semantics", "entities.yaml")) ?? "# 实体与业务模型(轻量语义资产)\nentities: []\nbusinessModels: []\n";
 
+  // ontology.yaml + bindings/*.yaml(P2 新增;缺失 → 空 + warning,不阻断)
+  const ontologyText = readIfExists(join(dir, "semantics", "ontology.yaml"));
+  const ontology = parseOntology(ontologyText);
+  const bindings = loadBindings({
+    datasetsYaml: readIfExists(join(dir, "semantics", "bindings", "datasets.yaml")) ?? undefined,
+    tablesYaml: readIfExists(join(dir, "semantics", "bindings", "tables.yaml")) ?? undefined,
+    metricsYaml: readIfExists(join(dir, "semantics", "bindings", "metrics.yaml")) ?? undefined,
+    knowledgeYaml: readIfExists(join(dir, "semantics", "bindings", "knowledge.yaml")) ?? undefined,
+  });
+  warnings.push(...ontology.warnings.map((w) => `[ontology] ${w}`));
+  warnings.push(...bindings.warnings.map((w) => `[bindings] ${w}`));
+
   return {
     dir,
     name: config.name ?? "北斗work 空间",
@@ -226,6 +243,8 @@ export function loadWorkspace(dir: string): LoadedWorkspace {
     playbooks,
     entitiesYaml,
     entities: parseEntities(entitiesYaml),
+    ontology,
+    bindings,
   };
 }
 

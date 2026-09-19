@@ -139,3 +139,14 @@ Code review 修复(15 条发现全处理)+ Phase 0/1 补记。
 ### Phase 0/1 补记(此前遗漏)
 - Phase 0 monorepo 迁移(a74353b):npm workspaces 拆包(beidou-core/domain-contracts/apps/desktop);183+10+2 测试全绿;dmg 构建通过
 - Phase 1 dsh 插件空壳(713d5fe):V1 PASS(cordis 插件装载+beidou_ping)
+
+## 0.9.0(2026-09-19)
+
+Phase 2:Ontology V1(schema+parser+validator+bindings+list_ontology 工具)。
+
+- **packages/ontology-schema**(TDD 19 用例):parseOntology(fail-open)/validateOntology(fail-closed:extends 环/子域引用/topic/key/重复 ID/relation 悬空/action 悬空/schemaVersion 校验)/loadBindings(datasets/tables/metrics/knowledge 四指针文件)/migrateEntities(旧→新草稿)
+- **list_ontology 工具**(第 8 个业务工具):按子域返回 class/property/action/绑定表指针结构
+- **search_semantics 命中扩容**:本体 class(名称/描述/属性)、relation、action 带子域归属进入候选
+- workspace 装载 ontology.yaml + bindings/*.yaml(fail-open,warning 不阻断)
+- e2e ×2:list_ontology 结构化输出 + search 命中本体 class
+- 214 测试全绿(core 183 + ontology 19 + desktop 12)

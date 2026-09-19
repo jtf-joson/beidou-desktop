@@ -276,3 +276,82 @@ describe("e2e 实体/业务模型进检索与诊断(v0.6)", () => {
     expect(dims).toContain("dim_vehicle_property_df_veh_series_no");
   });
 });
+
+describe("e2e Phase 2:ontology 集成", () => {
+  it("list_ontology 返回子域+class+action 结构", async () => {
+    const wsDir = makeWorkspace();
+    writeFileSync(join(wsDir, "semantics", "ontology.yaml"), [
+      "schemaVersion: 1",
+      "version: 0.1.0",
+      "domain:",
+      "  id: service",
+      "  name: 服务",
+      "  subdomains:",
+      "    - { id: store-ops, name: 门店经营, status: active, topics: [销售], owners: [] }",
+      "classes:",
+      "  - id: Store",
+      "    name: 门店",
+      "    subdomain: store-ops",
+      "    topic: 销售",
+      "    key: store_code",
+      "    properties:",
+      "      - { id: store_code, name: 门店编码, datatype: string, required: true }",
+      "actions:",
+      "  - id: analyze_sales",
+      "    name: 销售分析",
+      "    subdomain: store-ops",
+      "    subject: Store",
+      "    metrics: [store_sales_amt]",
+    ].join("\n"));
+    const ws = loadWorkspace(wsDir);
+    const { createMockStarRocks } = await import("@beidou/core/src/services/mock-starrocks");
+    const mock = createMockStarRocks();
+    const service = new AgentService(ws, {
+      starrocksQuery: async (sql) => {
+        const { queryStarRocks } = await import("@beidou/core/src/services/starrocks");
+        return queryStarRocks(mock, { host: "", port: 9030, user: "", password: "", maxRows: 100 }, sql);
+      },
+    });
+    const { createTools } = await import("@beidou/core/src/tools/tools");
+    const tools = createTools((service as unknown as { buildToolContext(s: string): never }).buildToolContext?.("onto-e2e") ?? (service as never));
+    const r = await tools.list_ontology({ subdomain: "store-ops" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const parsed = JSON.parse(r.text) as { subdomains: Array<{ subdomain: string; classes: Array<{ id: string }>; actions: Array<{ id: string }> }> };
+    expect(parsed.subdomains[0]!.subdomain).toBe("store-ops");
+    expect(parsed.subdomains[0]!.classes[0]!.id).toBe("Store");
+    expect(parsed.subdomains[0]!.actions[0]!.id).toBe("analyze_sales");
+  });
+
+  it("search_semantics 命中本体 class(名称/属性)", async () => {
+    const wsDir = makeWorkspace();
+    writeFileSync(join(wsDir, "semantics", "ontology.yaml"), [
+      "schemaVersion: 1",
+      "version: 0.1.0",
+      "domain: { id: s, name: S, subdomains: [{ id: a, name: A, status: active, topics: [] }] }",
+      "classes:",
+      "  - id: Store",
+      "    name: 门店",
+      "    subdomain: a",
+      "    properties: [{ id: store_code, name: 门店编码, datatype: string }]",
+    ].join("\n"));
+    const ws = loadWorkspace(wsDir);
+    const { createMockStarRocks } = await import("@beidou/core/src/services/mock-starrocks");
+    const mock = createMockStarRocks();
+    const service = new AgentService(ws, {
+      starrocksQuery: async (sql) => {
+        const { queryStarRocks } = await import("@beidou/core/src/services/starrocks");
+        return queryStarRocks(mock, { host: "", port: 9030, user: "", password: "", maxRows: 100 }, sql);
+      },
+    });
+    const { createTools } = await import("@beidou/core/src/tools/tools");
+    const tools = createTools((service as unknown as { buildToolContext(s: string): never }).buildToolContext?.("onto-search") ?? (service as never));
+    const r = await tools.search_semantics({ query: "门店" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const hits = JSON.parse(r.text).hits as Array<{ id: string; why: string }>;
+    const storeHit = hits.find((h) => h.id === "Store");
+    expect(storeHit).toBeDefined();
+    expect(storeHit!.why).toContain("本体 class");
+  });
+});

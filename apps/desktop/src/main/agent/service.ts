@@ -77,6 +77,8 @@ export class AgentService {
       knowledge: w.knowledge,
       playbooks: w.playbooks,
       entities: w.entities,
+      ontology: w.ontology,
+      bindings: w.bindings,
       dataSource: this.deps.dataSource,
       now: this.deps.now,
     };
@@ -156,6 +158,7 @@ function wrapTools(tools: ToolSetLike, after: (resp: ToolResponse) => void): Too
     diagnose_metric: wrap("diagnose_metric"),
     search_knowledge: wrap("search_knowledge"),
     read_playbook: wrap("read_playbook"),
+    list_ontology: wrap("list_ontology"),
   };
 }
 

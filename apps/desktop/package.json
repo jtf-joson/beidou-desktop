@@ -23,7 +23,8 @@
     "mysql2": "^3.11.0",
     "yaml": "2.5.0",
     "zod": "^4.0.0",
-    "@beidou/core": "file:../../packages/beidou-core"
+    "@beidou/core": "file:../../packages/beidou-core",
+    "@beidou/ontology-schema": "file:../../packages/ontology-schema"
   },
   "devDependencies": {
     "@types/mysql": "^2.15.26",
