@@ -1,0 +1,6 @@
+# 术语表(人工维护的权威源):Agent 检索时做同义词扩展
+terms: []
+#  - term: 高速智驾
+#    synonyms: [高速NOP, 高速领航]
+#    metricRefs: [sum_highway_adas_odometer_days]
+#    note: 口径见指标平台

@@ -1,0 +1,11 @@
+{
+  "name": "@beidou/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "北斗work 统一协议:BeidouToolResult / 错误码 / 证据与审计事件 Schema(纯类型+常量,零依赖)",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

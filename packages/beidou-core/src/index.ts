@@ -1,0 +1,22 @@
+/** @beidou/core 公共出口(内部模块仍可深路径引用) */
+export * from "./types";
+export { guard, type GuardPolicy, type GuardResult } from "./guard/sql-guard";
+export { buildStore, type SemanticStore } from "./semantics/store";
+export { importBeidou } from "./semantics/importer";
+export { compileMetricSql } from "./compiler/metric-sql";
+export { compileFormula, compileFilterExpr } from "./compiler/dsl";
+export { diagnoseMetric, detectAnomaly } from "./analysis/diagnosis";
+export { createTools, type ToolContext, type ToolSet } from "./tools/tools";
+export { searchKnowledge } from "./tools/knowledge";
+export { buildExploreSql } from "./tools/builder";
+export { createIdaasAuth } from "./auth/idaas";
+export { identityFromEptSession, isExpired } from "./identity/identity";
+export { createAuditLog } from "./audit/log";
+export { redactSecrets } from "./evidence/pack";
+export { DEFAULT_POLICY, can, menusFor, parseMembers, resolveRole } from "./rbac/rbac";
+export { filterAssets, parseScope } from "./spaces/scope";
+export { queryStarRocks } from "./services/starrocks";
+export { createMockStarRocks } from "./services/mock-starrocks";
+export { createAnyMetricsClient } from "./services/anymetrics";
+export { decideRoute } from "./router/policy";
+export { buildSystemPrompt, TOOL_NAMES } from "./router/prompt";

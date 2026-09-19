@@ -1,0 +1,133 @@
+[
+ {
+  "basicAttributes": {
+   "owner": "yuanpengpeng",
+   "unit": "SECOND",
+   "metricName": "drive_dur",
+   "metricLevel": "T4",
+   "metricDisplayName": "行驶时长"
+  },
+  "businessAttributes": {
+   "is_important": "false",
+   "metricCategoryId": "21b9adf1-6695-49d0-838c-85940d7aa5fd",
+   "sameperiod": "growth",
+   "businessCaliber": "上电时长-静止时长，单位：秒",
+   "index_polarity": "up",
+   "sameperiod_unit": "%",
+   "businessOwner": "yuanpengpeng"
+  },
+  "technicalAttributes": {},
+  "managementAttributes": {
+   "data_pm_owner": "space_drive_admin",
+   "data_rd_owner": "space_drive_admin"
+  },
+  "code": "mc03a6846799cc6665a0de4fac3c853f",
+  "version": 10,
+  "metricName": "drive_dur",
+  "metricCode": null,
+  "metricDisplayName": "行驶时长",
+  "businessCaliber": "上电时长-静止时长，单位：秒",
+  "owner": null,
+  "businessOwner": "yuanpengpeng",
+  "type": "COMPOSITE",
+  "caliber": {
+   "expr": "(['all_power_on_dur']) - (['active_park_dur'])",
+   "formula": {
+    "extType": null,
+    "type": "BIN_OP",
+    "path": null,
+    "op": "-",
+    "args": null,
+    "val": null,
+    "x": {
+     "extType": null,
+     "type": "NAME_REF",
+     "path": [
+      "mce5b344ba9ae6122c0b0951f3d53e61"
+     ],
+     "op": null,
+     "args": null,
+     "val": null,
+     "x": null,
+     "y": null,
+     "formula": null,
+     "partitionList": null,
+     "orderList": null,
+     "isDesc": null,
+     "position": [
+      {
+       "line": 1,
+       "start": 1,
+       "text": "[mce5b344ba9ae6122c0b0951f3d53e61]"
+      }
+     ]
+    },
+    "y": {
+     "extType": null,
+     "type": "NAME_REF",
+     "path": [
+      "mc316cf426e9011456f8d9ad771c4c7c"
+     ],
+     "op": null,
+     "args": null,
+     "val": null,
+     "x": null,
+     "y": null,
+     "formula": null,
+     "partitionList": null,
+     "orderList": null,
+     "isDesc": null,
+     "position": [
+      {
+       "line": 1,
+       "start": 20,
+       "text": "[mc316cf426e9011456f8d9ad771c4c7c]"
+      }
+     ]
+    },
+    "formula": null,
+    "partitionList": null,
+    "orderList": null,
+    "isDesc": null,
+    "position": [
+     {
+      "line": 1,
+      "start": 19,
+      "text": "-"
+     }
+    ]
+   },
+   "metricDefinitions": null,
+   "fingerPrint": null
+  },
+  "unit": "秒",
+  "formatConfig": null,
+  "cnUnit": "秒",
+  "metricCategoryId": "21b9adf1-6695-49d0-838c-85940d7aa5fd",
+  "metricViewCount": 0,
+  "viewDetailCount": 0,
+  "publishStatus": "PUBLISHED",
+  "status": "ONLINE",
+  "displayStatus": "PUBLISHED",
+  "isNewDimensionDefaultEnable": true,
+  "availableDimensions": null,
+  "disableDimensions": null,
+  "factorDimensions": [],
+  "restrictedDimensions": null,
+  "gmtCreate": "2025-05-21 15:29:34",
+  "gmtUpdate": "2026-07-28 09:56:22",
+  "timeGranularity": null,
+  "hasDateLimit": false,
+  "hasDerivationMethod": false,
+  "metricTimeDataType": "DATE",
+  "bizProperties": {
+   "is_important": "false",
+   "metricCategoryId": "21b9adf1-6695-49d0-838c-85940d7aa5fd",
+   "sameperiod": "growth",
+   "businessCaliber": "上电时长-静止时长，单位：秒",
+   "index_polarity": "up",
+   "sameperiod_unit": "%",
+   "businessOwner": "yuanpengpeng"
+  }
+ }
+]

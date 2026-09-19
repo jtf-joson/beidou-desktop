@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "paths": {
+      "@beidou/core/src/*": ["../beidou-core/src/*"],
+      "@beidou/contracts": ["../domain-contracts/src/index.ts"]
+    }
+  },
+  "include": ["src", "../beidou-core/src", "../domain-contracts/src"]
+}

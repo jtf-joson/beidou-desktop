@@ -1,0 +1,5 @@
+# 本文件是模板;运行 npm run dsh:poc 生成 .tmp/cordis.local.yml(绝对路径)后使用。
+# __BEIDOU_PLUGIN_ENTRY__ 会被替换为 packages/dsh-plugin-beidou/src/index.ts 的绝对路径。
+- insert:
+    - id: beidou-work
+      name: '__BEIDOU_PLUGIN_ENTRY__'

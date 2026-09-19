@@ -1,0 +1,10 @@
+node_modules/
+out/
+dist/
+*.local
+.DS_Store
+coverage/
+workspace/
+.env
+release/
+.tmp/

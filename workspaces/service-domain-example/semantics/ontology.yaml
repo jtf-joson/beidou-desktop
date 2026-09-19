@@ -1,0 +1,33 @@
+# 北斗work 本体(一套 schema;业务域=服务;两 subdomain;概念层,绑定层在 bindings/)
+# schemaVersion=结构版本(破坏性变更+1);version=内容 semver(CI 强制 bump)
+schemaVersion: 1
+version: 0.1.0
+
+domain:
+  id: service
+  name: 服务
+  subdomains:
+    - id: store-ops
+      name: 门店经营
+      status: draft
+      topics: [销售业绩, 服务产能, 门店基础]
+      owners: []            # GitLab 用户名,业务定稿时填
+    - id: user-exp
+      name: 用户体验
+      status: draft        # V2.1:两 subdomain 同 schema 声明,user-exp 为 draft
+      topics: [体验质量, 投诉工单, 满意度]
+      owners: []
+
+classes: []
+# Phase 2 填充(由 F-2 脚本起草 + 业务定稿),示例形态:
+#  - id: Store
+#    name: 门店
+#    subdomain: store-ops
+#    topic: 门店基础
+#    key: store_code
+#    properties:
+#      - { id: store_code, name: 门店编码, datatype: string, required: true }
+#    status: draft
+
+relations: []
+actions: []

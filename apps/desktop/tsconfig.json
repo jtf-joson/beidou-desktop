@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "types": [
+      "node",
+      "vitest/globals"
+    ],
+    "paths": {
+      "@beidou/core/src/*": [
+        "../../packages/beidou-core/src/*"
+      ],
+      "@beidou/core": [
+        "../../packages/beidou-core/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "tests",
+    "../../packages/beidou-core/src"
+  ]
+}
