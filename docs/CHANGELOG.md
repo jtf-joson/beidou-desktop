@@ -236,3 +236,14 @@ Phase 4 闭环:Identity 贯穿 + AuthStore 统一 + 多 Profile 接线。
 - **P0-5**:ToolContext 增加 identity 字段;Desktop AgentService 从 effectiveIdentity 注入;DSH 插件从 IDaaS token 缓存读取并注入
 - **P0-2(准备)**:context.ts 解析 config.connections 多 profile(与 connection-router 对接的输入);单连接场景向后兼容
 - 192 tests;V1 PASS
+
+## Phase 5 完成(2026-09-20)
+
+四壳对比报告 + F-10 决策建议(docs/plans/phase5-shell-comparison.md)。
+
+**结论**:北斗work Electron 为主壳,dsh 插件为能力分发通道。
+- UI 可扩展性:北斗work ⭐⭐⭐⭐⭐ vs dsh Web ⭐⭐(client-ui 无开放 API)
+- 安全:北斗work ⭐⭐⭐⭐(SQL Guard+RBAC+空间隔离)vs dsh(bash/fs 默认全开)
+- 升级:北斗work ⭐⭐⭐⭐(core 零依赖)vs dsh-desktop ⭐(23 个 patch 不可持续)
+- 工具轨迹:dsh ⭐⭐⭐⭐(内置 Trajectory)——值得北斗work 借鉴
+- 会话管理:dsh ⭐⭐⭐⭐(checkpoint/resume/fork)——北斗work 需补
