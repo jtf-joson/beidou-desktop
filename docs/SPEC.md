@@ -2,7 +2,7 @@
 
 > 版本:0.1(2026-09-17)
 > 本文档采用**自问自答(spec by Q&A)**方式编写:每个关键决策先提出问题、给出备选、再给出决定与理由。实现过程中出现新问题时在此追加条目,保持 spec 是单一事实源。
-> 参考:腾讯云 DataBuddy 官方资料(见 ~/databuddy/DataBuddy产品与技术架构详解.md)、北斗指标本体导出(~/北斗指标本体)、售后用户体验Agent项目(WorkBuddy 工作空间,作为反面/正面模式参考)。
+> 参考:腾讯云 DataBuddy 官方资料(见 ~/databuddy/DataBuddy产品与技术架构详解.md)、北斗指标本体导出(~/beidou-metrics-export)、售后用户体验Agent项目(WorkBuddy 工作空间,作为反面/正面模式参考)。
 
 ---
 
@@ -140,7 +140,7 @@ app/
 未配置 StarRocks 且未显式关闭(starrocks.mock: false)时,启用确定性 mock 连接器(core/services/mock-starrocks):按 SQL 形态(SELECT 列/GROUP BY/LIMIT)生成数据,SQL 哈希做种子保证同问同答;**诚实标注是硬约束**——工具层在结果 JSON 与 EvidenceItem 上标记 dataSource:mock / mock:true,UI 顶栏显示「演示数据(mock)」标签,证据面板逐条带 mock 标。配置真实 host 后自动切真实数据。
 
 ### Q5.2 开放问题(随实现追加)?
-- [ ] AnyMetrics 在线数值查询 API 的确切契约(先按 dip-vap-metric-query 的 queryMetrics schema 实现,联调时校正)
+- [ ] AnyMetrics 在线数值查询 API 的确切契约(先按 metric-query-mcp 的 queryMetrics schema 实现,联调时校正)
 - [ ] 敏感列清单初始来源(guard 已留配置位)
 - [ ] 是否需要会话持久化恢复(MVP:重启丢会话,先不做)
 

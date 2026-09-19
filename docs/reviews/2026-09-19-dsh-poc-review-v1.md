@@ -188,7 +188,7 @@ beidou-core/dist
 原方案包含：
 
 ```text
-/Users/jiatianfu/databuddy/dsh-plugin-beidou
+/Users/demo_user/databuddy/dsh-plugin-beidou
 ```
 
 并要求 `cordis.yml` 插件路径为绝对路径。

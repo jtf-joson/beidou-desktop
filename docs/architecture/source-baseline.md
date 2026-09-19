@@ -5,7 +5,7 @@
 harness_repository: https://github.com/deepseek-ai/deepseek-harness
 harness_commit: 见 /tmp/dsh-probe(探测克隆;正式开发时锁定精确 commit)
 dsh_npm_version: 0.1.5-rc.2   # dsh-desktop 同款锁定版本
-beidou_core_repository: 本地 /Users/jiatianfu/databuddy/app(计划迁公司 GitLab,分仓 beidou-work/beidou-workspace)
+beidou_core_repository: 本地 /Users/demo_user/databuddy/app(计划迁公司 GitLab,分仓 beidou-work/beidou-workspace)
 beidou_core_commit: (本仓 packages/beidou-core,随仓库演进;发布时打 tag)
 node_version: v22.22.0
 package_manager: npm 10.9.4(插件包采用 pnpm workspace,见 V2 计划)

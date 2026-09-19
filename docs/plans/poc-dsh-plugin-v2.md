@@ -74,7 +74,7 @@ beidou-workspace/
 
 ## 评审十问的回答(进入编码前)
 
-1. **core 在哪**:/Users/jiatianfu/databuddy/app 本地 git(main,基线 commit ce6ea04);Phase 0 迁入 pnpm workspace 的 packages/beidou-core。
+1. **core 在哪**:/Users/demo_user/databuddy/app 本地 git(main,基线 commit ce6ea04);Phase 0 迁入 pnpm workspace 的 packages/beidou-core。
 2. **拆 workspace 包**:是(P0-3,Phase 0 完成)。
 3. **权威源**:当前本地;目标公司 GitLab(代码仓 beidou-work + 资产仓 beidou-workspace,已确认分仓)。
 4. **资产分仓**:是(F-7 已确认)。

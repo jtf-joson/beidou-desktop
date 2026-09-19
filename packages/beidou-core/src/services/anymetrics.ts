@@ -1,6 +1,6 @@
 /**
  * AnyMetrics(北斗指标平台)客户端(SPEC Q2.9)。
- * 端点契约来自 ~/北斗指标本体/scripts/fetch_metrics.py 的实测;在线数值查询契约待联调校正(SPEC Q5.2)。
+ * 端点契约来自 ~/beidou-metrics-export/scripts/fetch_metrics.py 的实测;在线数值查询契约待联调校正(SPEC Q5.2)。
  * 依赖注入 fetch 与 delay,便于测试与 Electron 主进程复用。
  */
 import { err, ok, type Result } from "../types";

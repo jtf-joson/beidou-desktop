@@ -35,14 +35,14 @@ describe("IDaaS auth-service 客户端(idaas-auth-protocol 协议)", () => {
       {
         url: "",
         body: {
-          status: "valid", app_id: "cli_test", open_id: "jiatianfu", user_name: "jiatianfu",
-          identity_key: "cli_test:jiatianfu", authorization: "Bearer eyJabc",
+          status: "valid", app_id: "cli_test", open_id: "demo_user", user_name: "demo_user",
+          identity_key: "cli_test:demo_user", authorization: "Bearer eyJabc",
           expires_at: "2026-09-18T20:00:00Z", updated_at: "2026-09-18T08:00:00Z", source: "idaas-auth-service",
         },
       },
     ]);
     const auth = createIdaasAuth(CFG, deps);
-    const r = await auth.login({ openId: "jiatianfu", userName: "jiatianfu" });
+    const r = await auth.login({ openId: "demo_user", userName: "demo_user" });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.loginUrl).toContain("idaas/login");
@@ -50,9 +50,9 @@ describe("IDaaS auth-service 客户端(idaas-auth-protocol 协议)", () => {
     // 协议端点与顺序
     expect(calls[0]!.url).toBe("https://auth.example/api/idaas/sessions");
     expect(calls[0]!.method).toBe("POST");
-    expect(calls[0]!.body).toEqual({ app_id: "cli_test", open_id: "jiatianfu", user_name: "jiatianfu" });
+    expect(calls[0]!.body).toEqual({ app_id: "cli_test", open_id: "demo_user", user_name: "demo_user" });
     expect(calls[1]!.url).toContain("/api/idaas/sessions/sess-1");
-    expect(calls[2]!.url).toContain("/api/idaas/token-file?app_id=cli_test&open_id=jiatianfu");
+    expect(calls[2]!.url).toContain("/api/idaas/token-file?app_id=cli_test&open_id=demo_user");
   });
 
   it("轮询 pending → failed 超次后中止并报错(fail-closed)", async () => {
@@ -77,12 +77,12 @@ describe("IDaaS auth-service 客户端(idaas-auth-protocol 协议)", () => {
 
   it("cachedToken:读本地缓存,未过期直接可用", async () => {
     const token = {
-      status: "valid", app_id: "cli_test", open_id: "jiatianfu", user_name: "jiatianfu",
+      status: "valid", app_id: "cli_test", open_id: "demo_user", user_name: "demo_user",
       authorization: "Bearer cached", expires_at: "2026-09-18T20:00:00Z",
     };
     const { deps } = makeDeps([]);
     deps.readFile = async () => JSON.stringify(token);
-    const r = await createIdaasAuth(CFG, deps).cachedToken("jiatianfu");
+    const r = await createIdaasAuth(CFG, deps).cachedToken("demo_user");
     expect(r).toEqual({ ok: true, value: token });
   });
 
@@ -90,7 +90,7 @@ describe("IDaaS auth-service 客户端(idaas-auth-protocol 协议)", () => {
     const token = { status: "valid", authorization: "Bearer x", expires_at: "2026-09-18T07:59:00Z" };
     const { deps } = makeDeps([]);
     deps.readFile = async () => JSON.stringify(token);
-    const r = await createIdaasAuth(CFG, deps).cachedToken("jiatianfu");
+    const r = await createIdaasAuth(CFG, deps).cachedToken("demo_user");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe("IDAAS_TOKEN_EXPIRED");
   });

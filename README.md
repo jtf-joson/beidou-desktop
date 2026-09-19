@@ -24,7 +24,7 @@ npm run desktop:dist # dmg 打包
 
 ## 配置三步
 
-1. **导入语义资产**:把北斗导出(`metrics.json / details.json / dimensions.json / tree.json / lineage_summary.json / physical_tables.json`,即 `~/北斗指标本体/output/adss/` 下的文件)复制到工作区 `semantics/import/`。
+1. **导入语义资产**:把北斗导出(`metrics.json / details.json / dimensions.json / tree.json / lineage_summary.json / physical_tables.json`,即 `~/beidou-metrics-export/output/adss/` 下的文件)复制到工作区 `semantics/import/`。
 2. **插件页**编辑 `config.yaml`:模型(DeepSeek key,建议环境变量 `DEEPSEEK_API_KEY`)、StarRocks 只读连接;点「连接测试」。
 3. **对话页**提问。未配模型时为演示模式(确定性管线,全链路可用);未配 StarRocks 时指标/明细查询会明确报「未配置」——fail-closed,不编数。
 

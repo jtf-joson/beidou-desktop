@@ -11,7 +11,7 @@ const validSession = {
     ).toString("base64url") +
     ".s",
   expires_at: "2026-09-19T10:00:00+08:00",
-  account: { label: "jiatianfu", email: "demo_user@example.com", username: "jiatianfu" },
+  account: { label: "demo_user", email: "demo_user@example.com", username: "demo_user" },
 };
 
 describe("identityFromEptSession(复用 IDaaS 登录态)", () => {
@@ -19,7 +19,7 @@ describe("identityFromEptSession(复用 IDaaS 登录态)", () => {
     const r = identityFromEptSession(validSession);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value.username).toBe("jiatianfu");
+    expect(r.value.username).toBe("demo_user");
     expect(r.value.name).toBe("Demo User");
     expect(r.value.email).toBe("demo_user@example.com");
     expect(r.value.source).toBe("ept-session");

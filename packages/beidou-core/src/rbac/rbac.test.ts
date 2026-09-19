@@ -39,7 +39,7 @@ describe("parseMembers / resolveRole", () => {
   it("成员文件:username→role,非法条目忽略", () => {
     const m = parseMembers(`
 members:
-  - username: jiatianfu
+  - username: demo_user
     role: admin
   - username: zhang.san
     role: analyst
@@ -48,7 +48,7 @@ members:
     role: superhero
 `);
     expect(m).toHaveLength(2);
-    expect(m[0]).toEqual({ username: "jiatianfu", role: "admin" });
+    expect(m[0]).toEqual({ username: "demo_user", role: "admin" });
   });
 
   it("空/坏文件 → 空成员表(不炸)", () => {
@@ -68,7 +68,7 @@ members:
   });
 
   it("DEFAULT_MEMBERS_FILE 模板可被 parseMembers 解析", () => {
-    const m = parseMembers(DEFAULT_MEMBERS_FILE.replace("{{username}}", "jiatianfu"));
+    const m = parseMembers(DEFAULT_MEMBERS_FILE.replace("{{username}}", "demo_user"));
     expect(m).toHaveLength(1);
     expect(m[0]!.role).toBe("admin");
   });
