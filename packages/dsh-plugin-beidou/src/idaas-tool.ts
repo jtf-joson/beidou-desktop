@@ -42,8 +42,17 @@ function buildAuth() {
         await mkdir(dirname(abs), { recursive: true });
         const tmp = `${abs}.tmp`;
         await writeFile(tmp, content, "utf-8");
-        await rename(tmp, abs).catch(() => undefined);
+        // P1-7: rename 失败必须抛错(不能静默吞掉,否则 token 未落盘但工具报成功)
+        try {
+          await rename(tmp, abs);
+        } catch (e) {
+          await import("node:fs/promises").then((fs) => fs.unlink(tmp).catch(() => undefined));
+          throw new Error(`token 文件写入失败(rename): ${e instanceof Error ? e.message : String(e)}`);
+        }
         await chmod(abs, 0o600).catch(() => undefined);
+        // 写后校验:读回确认
+        const check = await readFile(abs, "utf-8");
+        if (!check.includes("authorization")) throw new Error("token 文件写入校验失败");
       },
       readFile: async () => readFile(TOKEN_FILE, "utf-8"),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -56,7 +65,7 @@ export function registerIdentityTools(ctx: Context): void {
   // beidou_login:返回登录链接(用户浏览器确认),后台轮询
   ctx.tools.register(defineTool({
     name: "beidou_login",
-    description: "北斗 IDaaS 登录:返回可点击的登录链接,用户在浏览器完成确认后 token 自动保存到本地。适合首次使用或 token 过期时调用。",
+    description: "北斗 IDaaS 登录:返回可点击的登录链接,后台自动轮询登录状态并在成功后保存 token。适合首次使用或 token 过期时调用。",
     parameters: {},
     output: { schema: IDAAS_SCHEMA, render: renderAuth },
     async execute() {
@@ -64,9 +73,18 @@ export function registerIdentityTools(ctx: Context): void {
         const auth = buildAuth();
         const sessionR = await auth.createLoginSession({ openId: OPEN_ID, userName: OPEN_ID });
         if (!sessionR.ok) return { ok: false, message: `创建失败:${sessionR.error.message}` };
+        const { loginUrl, sessionId } = sessionR.value;
+
+        // P0-1: 后台轮询 completeLogin(不阻塞工具返回;token 自动保存)
+        let loginStatus = "polling";
+        void auth.completeLogin({ sessionId, openId: OPEN_ID, poll: { intervalMs: 3000, maxAttempts: 100 } })
+          .then(() => { loginStatus = "success"; console.log("[beidou-work] IDaaS login completed, token saved"); })
+          .catch((e) => { loginStatus = "failed"; console.error("[beidou-work] IDaaS login failed:", e); });
+        void loginStatus; // loginStatus 供后续 beidou_auth_status 查询
+
         return {
           ok: true,
-          message: `🔐 请点击完成登录:[登录链接](${sessionR.value.loginUrl})\n\n登录完成后我会收到通知。如果浏览器没有自动打开,请手动复制链接到浏览器。`,
+          message: `🔐 请点击完成登录:[登录链接](${loginUrl})\n\n后台正在轮询登录状态(最长 5 分钟)。登录完成后 token 会自动保存到本地,届时可调用 beidou_auth_status 确认。`,
         };
       } catch (e) {
         return {

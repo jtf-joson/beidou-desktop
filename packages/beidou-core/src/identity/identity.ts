@@ -60,6 +60,6 @@ export function identityFromEptSession(raw: unknown): Result<Identity> {
 export function isExpired(identity: Pick<Identity, "expiresAt">, now: Date = new Date()): boolean {
   if (!identity.expiresAt) return false;
   const exp = new Date(identity.expiresAt).getTime();
-  if (Number.isNaN(exp)) return false;
+  if (Number.isNaN(exp)) return true; // P1-8:非法时间视为已过期(fail-closed)
   return now.getTime() >= exp - 5 * 60 * 1000;
 }

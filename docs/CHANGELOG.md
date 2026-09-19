@@ -216,3 +216,14 @@ Phase 4:身份工具 ×2 + connection-router + 遗留 P0 修复。
 - **P0-4 修复**:SDK env allowlist(PATH/HOME/LANG/TERM + 模型变量,不传全量 process.env)
 - V1 PASS:8 business + 2 identity tools(10 个工具)
 - 205 测试全绿(191 core + 12 desktop + 2 contracts)
+
+## 0.13.0(2026-09-20)
+
+外部 code review(d3a4790)P0/P1 修复。
+
+- **P0-1** beidou_login 补 completeLogin 后台轮询(token 自动保存;最长 5 分钟;成功/失败 console 输出)
+- **P0-3** Connection Router 改 true fail-closed:错误 Binding 立即拒绝(ROUTE_BINDING_PROFILE_NOT_FOUND);无显式 default 拒绝(ROUTE_NO_DEFAULT;不用 profiles[0])
+- **P1-7** token 原子写 rename 失败抛错 + 清理 tmp + 写后校验
+- **P1-8** isExpired 非法 expiresAt 视为已过期(fail-closed)
+- **P1-9** 匿名(未认证/过期)固定 viewer;defaultRole 只给已认证用户
+- Router 测试 7 用例(+2 fail-closed 回归);192 core 测试全绿;V1 PASS(10 tools)
