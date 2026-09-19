@@ -227,3 +227,12 @@ Phase 4:身份工具 ×2 + connection-router + 遗留 P0 修复。
 - **P1-8** isExpired 非法 expiresAt 视为已过期(fail-closed)
 - **P1-9** 匿名(未认证/过期)固定 viewer;defaultRole 只给已认证用户
 - Router 测试 7 用例(+2 fail-closed 回归);192 core 测试全绿;V1 PASS(10 tools)
+
+## 0.14.0(2026-09-20)
+
+Phase 4 闭环:Identity 贯穿 + AuthStore 统一 + 多 Profile 接线。
+
+- **P0-6**:Desktop auth 路径统一为 ~/.beidou/auth(与 DSH 共用同一 token 文件)
+- **P0-5**:ToolContext 增加 identity 字段;Desktop AgentService 从 effectiveIdentity 注入;DSH 插件从 IDaaS token 缓存读取并注入
+- **P0-2(准备)**:context.ts 解析 config.connections 多 profile(与 connection-router 对接的输入);单连接场景向后兼容
+- 192 tests;V1 PASS

@@ -38,6 +38,8 @@ export interface AgentDeps {
   dataSource?: "mock" | "real";
   /** 工具层审计 sink(P0-7:注入真实落盘,替代 no-op) */
   auditSink?: { append(e: unknown): Promise<void> };
+  /** 当前身份(P0-5:贯穿业务工具) */
+  identity?: { username: string; source: "idaas-token" | "ept-session" | "none" };
 }
 
 export class AgentService {
@@ -81,6 +83,7 @@ export class AgentService {
       ontology: w.ontology,
       bindings: w.bindings,
       dataSource: this.deps.dataSource,
+      identity: this.deps.identity,
       now: this.deps.now,
     };
   }

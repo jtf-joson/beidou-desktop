@@ -46,6 +46,20 @@ export async function buildPluginContext(config: PluginConfig) {
   const ws = loadWorkspace(config.workspace);
   const sr = ws.config.starrocks;
   const mock = config.dataSource === "mock" || (!sr?.host && sr?.mock !== false);
+
+  // P0-2:支持多 profile(config.connections);单连接时直接用
+  const connections = (ws.config as Record<string, unknown>).connections as Record<string, {
+    host?: string; port?: number; user?: string; password?: string; database?: string;
+  }> | undefined;
+  const profiles = connections
+    ? Object.entries(connections).map(([name, c]) => ({
+        name, type: "starrocks" as const,
+        host: c.host ?? "", port: c.port ?? 9030, user: c.user ?? "", password: c.password ?? "", database: c.database,
+      }))
+    : sr?.host
+      ? [{ name: "default", type: "starrocks" as const, host: sr.host, port: sr.port ?? 9030, user: sr.user ?? "", password: sr.password ?? "", database: sr.database }]
+      : [];
+
   const connector = mock ? createMockStarRocks() : mysqlConnector();
   const auditFile = join(ws.dir, "audit", "audit.jsonl");
   if (!existsSync(join(ws.dir, "audit"))) await mkdir(join(ws.dir, "audit"), { recursive: true });
@@ -55,8 +69,10 @@ export async function buildPluginContext(config: PluginConfig) {
   });
 
   const guard = ws.config.guard ?? {};
+  void profiles; // 多 profile 由 connection-router 消费(Phase 4 闭环)
   return {
     workspace: ws,
+    connectionProfiles: profiles,
     toolContextOverrides: {
       guardPolicy: {
         allowedTables: ws.store.allPhysicalTables(),

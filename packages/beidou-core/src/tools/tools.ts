@@ -39,6 +39,8 @@ export interface ToolContext {
   metricsByCode: Map<string, MetricMirror>;
   /** 数据源模式:mock 时结果必须标注演示数据 */
   dataSource?: "mock" | "real";
+  /** 当前身份(P0-5:贯穿业务工具,未登录 = undefined) */
+  identity?: { username: string; source: "idaas-token" | "ept-session" | "none" } | undefined;
   /** 实体与业务模型(诊断维度选择与检索) */
   entities?: EntitiesFile;
   /** 本体(ontology.yaml 解析结果) */

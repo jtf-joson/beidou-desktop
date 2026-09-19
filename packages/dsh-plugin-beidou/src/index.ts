@@ -42,6 +42,24 @@ export function apply(ctx: Context) {
     dataSource: built.toolContextOverrides.dataSource,
   };
 
+  // P0-5:从缓存 token 获取身份注入 ToolContext
+  try {
+    const auth = (await import("@beidou-core/auth/idaas")).createIdaasAuth(
+      { serviceUrl: "https://idaas-auth-service.example.com", appId: process.env.BEIDOU_IDAAS_APP_ID ?? "beidou-desktop" },
+      {
+        fetchFn: fetch,
+        writeFileAtomic: async () => {},
+        readFile: async () => { throw new Error("no cache"); },
+        sleep: async () => {},
+        now: () => new Date(),
+      },
+    );
+    const tokenR = await auth.cachedToken("owner");
+    if (tokenR.ok) {
+      toolCtx.identity = { username: tokenR.value.user_name ?? "owner", source: "idaas-token" };
+    }
+  } catch { /* 未登录 = 无身份 */ }
+
   registerBusinessTools(ctx, toolCtx);
   registerIdentityTools(ctx); // Phase 4:身份工具 ×2
   void buildPluginPrompt;

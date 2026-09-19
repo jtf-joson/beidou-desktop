@@ -30,7 +30,7 @@ const aborters = new Map<string, AbortController>();
 const USER_DATA = app?.getPath?.("userData") ?? process.cwd();
 const REGISTRY_FILE = join(USER_DATA, "spaces.json");
 const EPT_SESSION_FILE = join(homedir(), ".config", "ept", "auth_session.json");
-const AUTH_CACHE_DIR = join(USER_DATA, "auth");
+const AUTH_CACHE_DIR = join(homedir(), ".beidou", "auth"); // P0-6:统一路径(与 DSH 插件共用)
 
 function send(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload);
@@ -195,8 +195,10 @@ function buildAgentService(ws: LoadedWorkspace): AgentService {
     },
     readFile: async () => readFile(join(ws.dir, "audit", "audit.jsonl"), "utf-8"),
   });
+  const { identity: currentId } = effectiveIdentity();
   return new AgentService(ws, {
     dataSource: mock ? "mock" : "real",
+    identity: currentId ? { username: currentId.username, source: effectiveIdentity().source as "idaas-token" | "ept-session" | "none" } : undefined,
     auditSink: {
       append: async (e) => {
         await auditSink.append(e as never);
