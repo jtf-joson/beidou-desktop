@@ -41,16 +41,39 @@ describe("sql-guard R2 首词白名单", () => {
 
   it("WITH 开头(CTE)允许", () => {
     const r = guard(
-      "WITH t AS (SELECT dt FROM default_catalog.dw.dws_vehicle_adas_drive_index_df) SELECT * FROM t",
+      "WITH t AS (SELECT dt FROM default_catalog.dw.dws_vehicle_adas_drive_index_df) SELECT dt FROM t",
       policy,
     );
     expect(r.ok).toBe(true);
   });
 
-  it("EXPLAIN/SHOW/DESCRIBE 允许且跳过表白名单检查", () => {
-    expect(guard("EXPLAIN SELECT 1", policy).ok).toBe(true);
-    expect(guard("SHOW TABLES", policy).ok).toBe(true);
+  it("EXPLAIN/DESC 的表也须过白名单;SHOW 无表引用仍允许", () => {
+    expect(guard("EXPLAIN SELECT 1", policy).ok).toBe(true); // 无表
+    expect(guard("SHOW TABLES", policy).ok).toBe(true); // SHOW 不检查表
+    // 白名单表的 DESC 允许
     expect(guard("DESC default_catalog.dw.dws_vehicle_adas_drive_index_df", policy).ok).toBe(true);
+    // 非白名单表的 EXPLAIN 拒绝(P0-1 修复)
+    const r = guard("EXPLAIN SELECT * FROM evil.table", policy);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.rule).toBe("R4_table_whitelist");
+  });
+
+  it("P0-1 回归:逗号+别名可检测后续表", () => {
+    const r = guard(
+      "SELECT a.dt FROM default_catalog.dw.dws_vehicle_adas_drive_index_df a, evil.schema.secret b",
+      policy,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.rule).toBe("R4_table_whitelist");
+  });
+
+  it("P0-1 回归:SELECT * + 敏感列配置 → 拒绝", () => {
+    const r = guard("SELECT * FROM default_catalog.dw.dws_vehicle_adas_drive_index_df", {
+      ...policy,
+      sensitiveColumns: ["vin"],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.rule).toBe("R6_sensitive_column");
   });
 
   it("INSERT 开头 → 拒绝 R2(且命中 R3)", () => {
@@ -76,19 +99,19 @@ describe("sql-guard R3 关键词黑名单(token 级)", () => {
 
   it("字符串字面量里的 DROP 不误伤", () => {
     const r = guard(
-      `SELECT * FROM ${table} WHERE name = 'DROP TABLE x' AND note = "DELETE all"`,
+      `SELECT name, note FROM ${table} WHERE name = 'DROP TABLE x' AND note = "DELETE all"`,
       policy,
     );
     expect(r.ok).toBe(true);
   });
 
   it("注释里的 DELETE 不误伤(注释被剥离)", () => {
-    const r = guard(`SELECT * FROM ${table} /* DELETE */ WHERE x = 1 -- DROP`, policy);
+    const r = guard(`SELECT x FROM ${table} /* DELETE */ WHERE x = 1 -- DROP`, policy);
     expect(r.ok).toBe(true);
   });
 
   it("字符串里的分号不触发 R1", () => {
-    const r = guard(`SELECT * FROM ${table} WHERE name = 'a;b'`, policy);
+    const r = guard(`SELECT name FROM ${table} WHERE name = 'a;b'`, policy);
     expect(r.ok).toBe(true);
   });
 });
@@ -128,6 +151,7 @@ describe("sql-guard R4 表白名单", () => {
 
 describe("sql-guard R5 LIMIT", () => {
   const table = "default_catalog.dw.dws_vehicle_adas_drive_index_df";
+  const policy = { allowedTables: [table], maxRow: 200 }; // 无 sensitiveColumns(避免 SELECT * 被 R6 先拦)
 
   it("无 LIMIT → 追加 maxRow 并标记", () => {
     const r = guard(`SELECT * FROM ${table}`, policy);

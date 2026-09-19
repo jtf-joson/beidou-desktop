@@ -150,3 +150,27 @@ Phase 2:Ontology V1(schema+parser+validator+bindings+list_ontology 工具)。
 - workspace 装载 ontology.yaml + bindings/*.yaml(fail-open,warning 不阻断)
 - e2e ×2:list_ontology 结构化输出 + search 命中本体 class
 - 214 测试全绿(core 183 + ontology 19 + desktop 12)
+
+## 0.9.1(2026-09-19)
+
+外部 code review(GitHub 公开快照)P0 修复:5 项阻断问题全清。
+
+### P0-2 config:read 凭据脱敏
+- 渲染层读取 config.yaml 时 auth_token/password/auth_value/service_token 替换为 ***
+- config:read 增加 config:save 权限校验(engineer+)
+
+### P0-3 过期身份不再保有角色
+- currentRole() 统一检查 isExpired;过期身份走 defaultRole(viewer),不映射成员角色
+
+### P0-4 skills:toggle 路径穿越修复
+- 复用 skills:save 的 /^[A-Za-z0-9_-]+$/ 名称校验,阻断 ../../ 穿越
+
+### P0-7 工具层审计真实落盘
+- AgentDeps 增加 auditSink 接口;buildAgentService 注入 createAuditLog → workspace/audit/audit.jsonl
+- tool_call/tool_result/guard_rejection/agent_reply 全量经 auditSink 写入
+
+### P0-1 SQL Guard 三项加固(+2 回归测试)
+- 逗号+别名表检测:FROM allowed a, secret b 现可检出 secret(FROM 后跟别名再逗号的场景)
+- EXPLAIN/DESC 表不再跳过白名单:EXPLAIN SELECT * FROM evil.table 被拒绝;SHOW(无表引用)仍放行
+- SELECT * + 敏感列配置 → 拒绝(无法验证 * 不含敏感列)
+- 新增回归测试:comma+alias、SELECT * + sensitive

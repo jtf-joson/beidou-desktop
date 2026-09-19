@@ -181,8 +181,19 @@ function buildAgentService(ws: LoadedWorkspace): AgentService {
   const sr = ws.config.starrocks;
   const mock = mockDataActive(ws);
   const connector = mock ? createMockStarRocks() : mysqlConnector();
+  const auditSink = createAuditLog({
+    appendFile: async (line) => {
+      await appendFile(join(ws.dir, "audit", "audit.jsonl"), line, "utf-8");
+    },
+    readFile: async () => readFile(join(ws.dir, "audit", "audit.jsonl"), "utf-8"),
+  });
   return new AgentService(ws, {
     dataSource: mock ? "mock" : "real",
+    auditSink: {
+      append: async (e) => {
+        await auditSink.append(e as never);
+      },
+    },
     starrocksQuery: async (sql) => {
       if (!sr?.host && !mock) {
         return { ok: false, error: { code: "SR_NOT_CONFIGURED", message: "未配置 StarRocks 连接(插件页配置后可用;或在 config.yaml 设 starrocks.mock: true 开启演示数据)" } };
@@ -499,6 +510,10 @@ function registerIpc(): void {
     if (!can(currentRole(), "skills:manage", DEFAULT_POLICY)) {
       return { ok: false, error: "当前角色无技能管理权限" };
     }
+    // 路径穿越防护(P0-4):复用 skills:save 的名称校验
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+      return { ok: false, error: "非法技能名" };
+    }
     if (!workspace) return { ok: false, error: "no workspace" };
     const base = join(workspace.dir, ".claude", "skills");
     const on = join(base, name);
@@ -572,9 +587,19 @@ function registerIpc(): void {
   });
 
   ipcMain.handle("config:read", async () => {
+    if (!can(currentRole(), "config:save", DEFAULT_POLICY)) {
+      return { ok: false, error: "当前角色无配置读取权限" };
+    }
     if (!workspace) return { ok: false };
     try {
-      return { ok: true, text: await readFile(join(workspace.dir, "config.yaml"), "utf-8") };
+      const raw = await readFile(join(workspace.dir, "config.yaml"), "utf-8");
+      // 凭据脱敏:渲染层不接触明文密钥(P0-2)
+      const masked = raw
+        .replace(/(auth_token:\s*)(\S+)/g, "$1***")
+        .replace(/(password:\s*)(\S+)/g, "$1***")
+        .replace(/(auth_value:\s*)(\S+)/g, "$1***")
+        .replace(/(service_token:\s*)(\S+)/g, "$1***");
+      return { ok: true, text: masked };
     } catch {
       return { ok: true, text: "" };
     }

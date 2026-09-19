@@ -135,6 +135,10 @@ function collectTables(toks: Tok[]): string[] {
         if (!chain) break;
         out.push(chain.name);
         j = chain.next;
+        // 跳过别名(单标识符)后继续检查逗号(P0-1 修复:FROM a, secret b)
+        if (toks[j]?.kind === "word" && !["ORDER", "LIMIT", "WHERE", "GROUP", "HAVING", "UNION", "ON", "AS", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS", "JOIN"].includes(toks[j]!.v.toUpperCase())) {
+          j++; // skip alias
+        }
         if (toks[j]?.kind === "punct" && toks[j]!.v === ",") { j++; continue; }
         break;
       }
@@ -173,10 +177,12 @@ export function guard(rawSql: string, policy: GuardPolicy): GuardResult {
     }
   }
 
-  const introspection = lead === "SHOW" || lead === "DESC" || lead === "DESCRIBE" || lead === "EXPLAIN";
+  // SHOW/DESC 允许跳过 LIMIT;但 EXPLAIN 和 DESC 的表仍须过白名单(P0-1 修复)
+  const skipLimit = lead === "SHOW";
+  const checkTable = true; // 所有语句的表引用都检查白名单
 
-  if (!introspection) {
-    // R4 表白名单(CTE 别名豁免)
+  if (checkTable) {
+    // R4 表白名单(CTE 别名豁免;所有语句含 EXPLAIN/DESC 都检查)
     const cteNames = collectCteNames(toks);
     const tables = collectTables(toks).filter((t) => !cteNames.has(t));
     const allowed = new Set(policy.allowedTables.map((t) => t.trim()));
@@ -186,9 +192,14 @@ export function guard(rawSql: string, policy: GuardPolicy): GuardResult {
       }
     }
 
-    // R6 敏感列(裸列名精确匹配)
+    // R6 敏感列(裸列名精确匹配;SELECT * 也须拦截)
     const sensitive = new Set((policy.sensitiveColumns ?? []).map((c) => c.toLowerCase()));
     if (sensitive.size > 0) {
+      // SELECT * + 敏感列配置 → 拒绝(无法验证 * 不含敏感列)
+      const hasStar = toks.some((t, idx) => t.kind === "punct" && t.v === "*" && idx > 0 && toks[idx - 1]?.v.toUpperCase() === "SELECT");
+      if (hasStar) {
+        return { ok: false, rule: "R6_sensitive_column", reason: "SELECT * 与敏感列配置冲突(无法验证不含敏感列)" };
+      }
       for (const t of toks) {
         if (t.kind === "word" && sensitive.has(t.v.toLowerCase())) {
           return { ok: false, rule: "R6_sensitive_column", reason: `敏感列 ${t.v}` };
@@ -197,10 +208,10 @@ export function guard(rawSql: string, policy: GuardPolicy): GuardResult {
     }
   }
 
-  // R5 LIMIT:仅对查询语句强制;SHOW/DESC 天然受限
+  // R5 LIMIT:仅对查询语句强制;SHOW 天然受限
   let sql = src;
   let appliedLimit = false;
-  if (!introspection) {
+  if (!skipLimit) {
     let limitTok: Tok | null = null;
     for (const t of toks) {
       if (t.kind === "word" && t.v.toUpperCase() === "LIMIT") limitTok = t;
