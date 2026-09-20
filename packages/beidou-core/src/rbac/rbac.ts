@@ -19,14 +19,14 @@ export interface RbacPolicy {
   perms: Record<Role, string[]>;
 }
 
-export const MENU_KEYS = ["chat", "semantics", "skills", "plugins", "audit", "settings"] as const;
+export const MENU_KEYS = ["chat", "history", "semantics", "skills", "plugins", "audit", "settings"] as const;
 
 export const DEFAULT_POLICY: RbacPolicy = {
   menus: {
     admin: [...MENU_KEYS],
-    engineer: ["chat", "semantics", "skills", "audit"],
-    analyst: ["chat", "semantics", "audit"],
-    viewer: ["chat", "audit"],
+    engineer: ["chat", "history", "semantics", "skills", "audit"],
+    analyst: ["chat", "history", "semantics", "audit"],
+    viewer: ["chat", "history", "audit"],
   },
   perms: {
     admin: ["tool:query", "tool:clarify", "semantics:view", "semantics:edit", "skills:manage", "config:save", "audit:view", "space:admin"],

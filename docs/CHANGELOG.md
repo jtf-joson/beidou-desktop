@@ -326,3 +326,27 @@ Phase A headless spike 全链路贯通(架构反转首个里程碑)。
 - **修协议出口 bug**:core EvidenceItem 显式 undefined 的可选字段被 dsh 宿主 cloneJson 拒绝("value is not lossless JSON",全部业务工具炸输出)→ toToolValue pruneUndefined 深度清洗 + 常驻符合性测试(真实 workspace × 4 工具 × 无 undefined + schema 校验)
 - **patch 文法勘误**:- insert: 仅新增,覆盖已有行用顶层 {id, disabled};--patch 叠加会 duplicate → 拆 beidou-common 单源生成(sync-beidou-profiles.mjs 支持 --home),beidou-web/beidou-headless 双 profile;模型固定 deepseek-official(决策 3)
 - 验证快照:profiles/artifacts/phase-a-spike-2026-09-20.md;插件 25 测试(符合性门禁)
+
+## 0.17.0(2026-09-20)
+
+**架构反转落地:移除 Claude Agent SDK,DeepSeek Harness 成为唯一 Agent Runtime。**
+
+### 移除
+- `@anthropic-ai/claude-agent-sdk` / `@anthropic-ai/sdk` 依赖与 asarUnpack(安装目录瘦身 ~214MB)
+- `src/main/agent/`(sdk-runner/service 全部)、agent:send IPC、DDAW_SEND 钩子、AgentService 构建链
+- ChatPage 自研问答流(气泡/输入/实时事件)与 e2e/llm-smoke 旧测试
+
+### 新增
+- **dsh-runtime.ts**:壳内启动 beidou-web——独立 DSH_HOME(userData/dsh-home,DSH 官方自管 module fallback)、127.0.0.1 动态端口 + token 认证 URL 解析、就绪探活、退出终止;key 从工作区 config 注入 DEEPSEEK_API_KEY,model:save 后自动重启生效
+- **对话页 = WebContentsView 内嵌 DSH Web**(非 iframe/webview):渲染层占位容器 + ResizeObserver 上报矩形,主进程 attach/bounds/hide 三 IPC 管理视图;实测 DSH Web UI 在壳内完整渲染
+- **分析历史页(只读)**:旧 JSONL 会话归档查看/导出/删除(决策 5),复用回放渲染;RBAC 菜单新增 history(全角色可见)
+- 菜单改名:对话 → 智能分析助手
+
+### 排障记录(三个连环坑)
+1. dsh bin.js 以 `import.meta.main` 自启——Node 22 特性,Electron 33 内置 node 20 静默跳过退出 0;曾写 dsh-entry 包装器显式调 runCli 绕过
+2. DSH 需 `node:zlib` zstd API(Node ≥22.15)——Electron node 20 彻底不够;改探测系统 node(DAW_NODE_BIN 注入 > PATH > 常见路径,版本校验),dsh-entry 保留备将来 Electron 升级
+3. DSH 官方自管 profiles/node_modules 与 .dsh-module-fallback——外部预建 symlink 会被拒("not a symlink or dsh-managed"),必须让 dsh 自建
+
+### 待办(打包链)
+- 打包版:node_modules 需出 asar(bundle 依赖)+ node ≥22.15 二进制来源(内置或 DAW_NODE_BIN);dev 链路已全通
+- 测试:core 208 + 插件 25 + 桌面 16;类型检查零错误

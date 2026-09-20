@@ -1,7 +1,7 @@
 {
   "name": "@beidou/desktop",
   "productName": "北斗work",
-  "version": "0.16.5",
+  "version": "0.17.0",
   "description": "北斗work —— 数据智能体工作台(仿 DataBuddy:语义配置 + 技能插件 + 智能问数/下钻/明细分析)",
   "main": "out/main/index.js",
   "private": true,
@@ -17,8 +17,6 @@
     "dist": "npm run build && electron-builder --mac"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.274",
-    "@anthropic-ai/sdk": ">=0.93.0",
     "@beidou/core": "file:../../packages/beidou-core",
     "@beidou/ontology-schema": "file:../../packages/ontology-schema",
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -86,7 +84,7 @@
     },
     "asarUnpack": [
       "resources/**",
-      "node_modules/@anthropic-ai/claude-agent-sdk*/**"
+      "node_modules/@deepseek-ai/**"
     ]
   }
 }

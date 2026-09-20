@@ -44,8 +44,12 @@ const api = {
   sessionDelete: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("session:delete", id),
   sessionImport: (id: string, bubbles: unknown): Promise<{ ok: boolean; count: number }> => ipcRenderer.invoke("session:import", id, bubbles),
   exportReport: (markdown: string): Promise<{ ok: boolean; file?: string; error?: string }> => ipcRenderer.invoke("report:export", markdown),
-  send: (sessionId: string, text: string): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke("agent:send", sessionId, text),
+  dshStart: (): Promise<{ ok: boolean; url?: string; error?: string }> => ipcRenderer.invoke("dsh:start"),
+  dshAttach: (rect: { x: number; y: number; width: number; height: number }): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("dsh:attach", rect),
+  dshBounds: (rect: { x: number; y: number; width: number; height: number }): Promise<void> =>
+    ipcRenderer.invoke("dsh:bounds", rect),
+  dshHide: (): Promise<void> => ipcRenderer.invoke("dsh:hide"),
   onAgentEvent: (cb: (payload: { sessionId: string; ev: unknown }) => void): (() => void) => {
     const listener = (_e: unknown, payload: { sessionId: string; ev: unknown }) => cb(payload);
     ipcRenderer.on("agent:event", listener);

@@ -1,20 +1,18 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, WebContentsView, ipcMain, dialog } from "electron";
 import { join, dirname } from "node:path";
 import { appendFile, readFile, copyFile, mkdir, readdir, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { loadWorkspace, modelConfigured, type LoadedWorkspace } from "./workspace";
-import { AgentService, type AgentEvent } from "./agent/service";
-import { runSdkAgent } from "./agent/sdk-runner";
 import { queryStarRocks } from "@beidou/core/src/services/starrocks";
 import { createMockStarRocks } from "@beidou/core/src/services/mock-starrocks";
 import { mysqlConnector } from "./starrocks-connector";
 import { createAuditLog } from "@beidou/core/src/audit/log";
-import { bubblesToEvents, agentEventToSessionEvent } from "@beidou/core/src/session/replay";
-import { redactSecrets } from "@beidou/core/src/evidence/pack";
+import { bubblesToEvents } from "@beidou/core/src/session/replay";
 import { identityFromEptSession, isExpired, type Identity } from "@beidou/core/src/identity/identity";
 import { restoreMaskedSecrets } from "./config-merge";
 import { createSessionStoreFactory } from "./session-store-factory";
+import { dshRuntime } from "./dsh-runtime";
 import { readModelSection, mergeModelSection, writeConfigAtomic, resolveModelToken, testModelEndpoint } from "./model-config";
 import { createIdaasAuth, type IdaasTokenFile, type IdaasAuth } from "@beidou/core/src/auth/idaas";
 import { DEFAULT_POLICY, can, menusFor, resolveRole, type Role } from "@beidou/core/src/rbac/rbac";
@@ -24,12 +22,11 @@ import {
 } from "./spaces";
 
 let mainWindow: BrowserWindow | null = null;
+let dshView: WebContentsView | null = null;
 let workspace: LoadedWorkspace | null = null;
-let agentService: AgentService | null = null;
 let registry: SpacesRegistry = { spaces: [] };
 let identity: Identity | null = null;
 let idaasToken: IdaasTokenFile | null = null;
-const aborters = new Map<string, AbortController>();
 
 const USER_DATA = app?.getPath?.("userData") ?? process.cwd();
 const REGISTRY_FILE = join(USER_DATA, "spaces.json");
@@ -195,43 +192,6 @@ function mockDataActive(ws: LoadedWorkspace | null): boolean {
   return !sr?.host && sr?.mock !== false;
 }
 
-function buildAgentService(ws: LoadedWorkspace): AgentService {
-  const sr = ws.config.starrocks;
-  const mock = mockDataActive(ws);
-  const connector = mock ? createMockStarRocks() : mysqlConnector();
-  const auditSink = createAuditLog({
-    appendFile: async (line) => {
-      await appendFile(join(ws.dir, "audit", "audit.jsonl"), line, "utf-8");
-    },
-    readFile: async () => readFile(join(ws.dir, "audit", "audit.jsonl"), "utf-8"),
-  });
-  const { identity: currentId } = effectiveIdentity();
-  return new AgentService(ws, {
-    dataSource: mock ? "mock" : "real",
-    identity: currentId ? { username: currentId.username, source: effectiveIdentity().source as "idaas-token" | "ept-session" | "none" } : undefined,
-    auditSink: {
-      append: async (e) => {
-        await auditSink.append(e as never);
-      },
-    },
-    starrocksQuery: async (sql) => {
-      if (!sr?.host && !mock) {
-        return { ok: false, error: { code: "SR_NOT_CONFIGURED", message: "未配置 StarRocks 连接(插件页配置后可用;或在 config.yaml 设 starrocks.mock: true 开启演示数据)" } };
-      }
-      return queryStarRocks(connector, {
-        host: sr?.host ?? "",
-        port: sr?.port ?? 9030,
-        user: sr?.user ?? "",
-        password: sr?.password ?? "",
-        database: sr?.database,
-        timeoutSec: sr?.timeout_sec,
-        maxRows: ws.config.guard?.max_row ?? 200,
-      }, sql);
-    },
-    runSdkAgent: modelConfigured(ws) ? runSdkAgent : undefined,
-  });
-}
-
 function auditLogOf(ws: LoadedWorkspace) {
   const file = join(ws.dir, "audit", "audit.jsonl");
   return createAuditLog({
@@ -269,7 +229,6 @@ function currentRole(): Role {
 async function activateSpace(entry: SpaceEntry): Promise<void> {
   await ensureWorkspace(entry.dir, identity?.username);
   workspace = loadWorkspace(entry.dir);
-  agentService = buildAgentService(workspace);
 }
 
 async function bootstrapSpaces(): Promise<void> {
@@ -316,6 +275,14 @@ function workspaceState(): Record<string, unknown> {
       spaces: registry.spaces.map((s) => ({ id: s.id, name: s.name, dir: s.dir })),
     },
   };
+}
+
+function readModelSectionRaw(ws: LoadedWorkspace): ReturnType<typeof readModelSection> {
+  try {
+    return readModelSection(readFileSync(join(ws.dir, "config.yaml"), "utf-8"));
+  } catch {
+    return {};
+  }
 }
 
 function registerIpc(): void {
@@ -435,8 +402,7 @@ function registerIpc(): void {
     if (!workspace) return { ok: false, error: "no workspace" };
     await writeFile(join(workspace.dir, "members.yaml"), text, "utf-8");
     workspace = loadWorkspace(workspace.dir);
-    agentService = buildAgentService(workspace);
-    return { ok: true };
+      return { ok: true };
   });
 
   // ---- 语义资产:导入(目录/演示包)与术语 CRUD(真实产品能力) ----
@@ -488,7 +454,6 @@ function registerIpc(): void {
     const dir = workspace.dir;
     const ws2 = loadWorkspace(dir); // TODO Phase 2 拆为增量装载;当前先异步化避免阻塞渲染
     workspace = ws2;
-    agentService = buildAgentService(ws2);
   }
 
   ipcMain.handle("glossary:save", async (_e, text: string) => {
@@ -699,7 +664,8 @@ function registerIpc(): void {
     const merged = mergeModelSection(raw, patch);
     if (!merged.ok) return { ok: false, error: merged.error };
     await writeConfigAtomic(configPath, merged.value);
-    await activateSpace(activeSpace(registry)!); // 重建 AgentService,配置即时生效
+    await activateSpace(activeSpace(registry)!); // 配置即时生效
+    dshRuntime.stop(); // key 变更:重启 DSH 使新 env 生效(下次 dsh:start 拉起)
     return { ok: true };
   });
 
@@ -736,42 +702,39 @@ function registerIpc(): void {
     return { ok: true, results };
   });
 
-  ipcMain.handle("agent:send", async (_e, sessionId: string, text: string) => {
-    if (!agentService) return { ok: false, error: "no workspace" };
-    if (!can(currentRole(), "tool:query", DEFAULT_POLICY)) {
-      return { ok: false, error: "当前角色无查询权限" };
-    }
-    const audit = workspace ? auditLogOf(workspace) : null;
-    const ac = new AbortController();
-    aborters.set(sessionId, ac);
-    const persist = (ev: AgentEvent): void => {
-      // 会话事件落 JSONL(权威源;失败不阻塞问答,仅记录)
-      sessionStore().append(agentEventToSessionEvent(sessionId, ev))
-        .catch((e) => console.error("[session] persist failed:", e instanceof Error ? e.message : e));
-    };
+  // ---- DSH 唯一 Agent Runtime:对话页内嵌 DSH Web(beidou-web profile)----
+  ipcMain.handle("dsh:start", async () => {
     try {
-      await agentService.ask(sessionId, text, (ev: AgentEvent) => {
-        send("agent:event", { sessionId, ev });
-        persist(ev);
-        if (audit && (ev.type === "user" || ev.type === "tool_result" || ev.type === "assistant")) {
-          void audit.append({
-            ts: new Date().toISOString(),
-            kind: ev.type === "user" ? "user_message" : ev.type === "assistant" ? "agent_reply" : "tool_result",
-            sessionId,
-            summary: ev.type === "assistant" ? (ev.text ?? "").slice(0, 200) : ev.type === "user" ? text.slice(0, 200) : "tool_result",
-            detail: redactSecrets(ev),
-          });
-        }
-      });
+      const token = workspace ? resolveModelToken(readModelSectionRaw(workspace)) : undefined;
+      const state = await dshRuntime.start({ DEEPSEEK_API_KEY: token });
+      return { ok: true, url: state.url };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  // WebContentsView 承载 DSH Web(渲染层经 ResizeObserver 上报容器矩形)
+  ipcMain.handle("dsh:attach", async (_e, rect: { x: number; y: number; width: number; height: number }) => {
+    try {
+      const token = workspace ? resolveModelToken(readModelSectionRaw(workspace)) : undefined;
+      const state = await dshRuntime.start({ DEEPSEEK_API_KEY: token });
+      if (!dshView) {
+        dshView = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false } });
+        mainWindow?.contentView.addChildView(dshView);
+        await dshView.webContents.loadURL(state.url);
+      }
+      dshView.setBounds(rect);
+      dshView.setVisible(true);
       return { ok: true };
     } catch (e) {
-      const errEv: AgentEvent = { type: "error", message: e instanceof Error ? e.message : String(e) };
-      send("agent:event", { sessionId, ev: errEv });
-      persist(errEv);
-      return { ok: false, error: String(e) };
-    } finally {
-      aborters.delete(sessionId);
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
+  });
+  ipcMain.handle("dsh:bounds", (_e, rect: { x: number; y: number; width: number; height: number }) => {
+    dshView?.setBounds(rect);
+  });
+  ipcMain.handle("dsh:hide", () => {
+    dshView?.setVisible(false);
   });
 }
 
@@ -814,6 +777,10 @@ app?.whenReady?.().then(async () => {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+  // 渲染层 console 转发(调试)
+  mainWindow.webContents.on("console-message", (_e, level, message, line, sourceId) => {
+    if (level >= 2) console.log(`[renderer:${level}]`, message, `(${sourceId?.split("/").pop()}:${line})`);
+  });
   if (process.env.ELECTRON_RENDERER_URL) {
     await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -821,27 +788,10 @@ app?.whenReady?.().then(async () => {
   }
   registerIpc();
   await bootstrapSpaces();
-  // DEBUG-SCREENSHOT / DEBUG-SEND:仅手动验证(DDAW_SCREENSHOT=1 截图;DDAW_SEND="问题" 端到端跑一轮)
-  if (process.env.DDAW_SCREENSHOT || process.env.DDAW_SEND) {
+  // DEBUG-SCREENSHOT:仅手动验证 UI(DDAW_SCREENSHOT=/path.png DDAW_PAGE=settings npx electron .)
+  if (process.env.DDAW_SCREENSHOT) {
     setTimeout(async () => {
       try {
-        if (process.env.DDAW_SEND) {
-          // 端到端验证:主进程直跑一轮问答(RBAC 旁路,仅调试),事件流打日志
-          const sid = `ddaw-probe-${Date.now()}`;
-          if (!agentService) {
-            console.log("[ddaw-send] no agentService");
-          } else {
-            try {
-              await agentService.ask(sid, process.env.DDAW_SEND, (ev) =>
-                console.log("[ddaw-send]", ev.type, JSON.stringify(ev).slice(0, 300)),
-              );
-              console.log("[ddaw-send] FINISHED ok");
-            } catch (e) {
-              console.log("[ddaw-send] THREW:", e instanceof Error ? e.message : String(e));
-            }
-          }
-        }
-        if (!process.env.DDAW_SCREENSHOT) return;
         if (process.env.DDAW_THEME) {
           await mainWindow!.webContents.executeJavaScript(`localStorage.setItem("daw.theme", ${JSON.stringify(process.env.DDAW_THEME)}); true`);
           await mainWindow!.webContents.reload();
@@ -849,6 +799,22 @@ app?.whenReady?.().then(async () => {
         }
         const topbar = await mainWindow!.webContents.executeJavaScript(`document.querySelector(".daw-topbar")?.innerText ?? "(no topbar)"`);
         console.log("[topbar]", topbar);
+        const dawKeys = await mainWindow!.webContents.executeJavaScript(`Object.keys(window.daw ?? {}).join(",")`);
+        console.log("[daw-api]", dawKeys);
+        // 探针:替渲染层直接调 dshStart + 检查 ChatPage 挂载
+        const probe = await mainWindow!.webContents.executeJavaScript(`(async () => {
+          const host = document.querySelector(".daw-conv-col");
+          let st = "dshStart未调";
+          try { const r = await window.daw.dshStart(); st = r.ok ? "OK:" + (r.url ?? "").slice(0, 40) : "FAIL:" + r.error; } catch (e) { st = "THREW:" + e; }
+          return JSON.stringify({ hostExists: !!host, dshStart: st });
+        })()`);
+        console.log("[probe]", probe);
+        if (dshView) {
+          try {
+            const t = await dshView.webContents.executeJavaScript("JSON.stringify({ title: document.title, text: (document.body?.innerText ?? \"\").slice(0, 80) })");
+            console.log("[dsh-view]", JSON.stringify(t));
+          } catch (e) { console.log("[dsh-view] eval failed:", e instanceof Error ? e.message : e); }
+        } else { console.log("[dsh-view] 未创建(ChatPage 未 attach?)"); }
         if (process.env.DDAW_PAGE) {
           // DEBUG 页面导航:点击侧栏按钮后再截图(验证非默认页)
           await mainWindow!.webContents.executeJavaScript(
@@ -866,6 +832,10 @@ app?.whenReady?.().then(async () => {
       app.quit();
     }, 6000);
   }
+});
+
+app?.on?.("before-quit", () => {
+  dshRuntime.stop();
 });
 
 app?.on?.("window-all-closed", () => {

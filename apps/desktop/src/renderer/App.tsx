@@ -15,9 +15,11 @@ import {
   FolderOpenOutlined,
   DeleteOutlined,
   ReloadOutlined,
+  HistoryOutlined,
 } from "@ant-design/icons";
 import { theme as antdTheme } from "antd";
 import ChatPage from "./pages/ChatPage";
+import HistoryPage from "./pages/HistoryPage";
 import SemanticsPage from "./pages/SemanticsPage";
 import SkillsPage from "./pages/SkillsPage";
 import PluginsPage from "./pages/PluginsPage";
@@ -43,7 +45,8 @@ interface WsState {
 }
 
 const PAGE_META: Record<string, { icon: React.ReactNode; title: string }> = {
-  chat: { icon: <MessageOutlined />, title: "对话" },
+  chat: { icon: <MessageOutlined />, title: "智能分析助手" },
+  history: { icon: <HistoryOutlined />, title: "分析历史" },
   semantics: { icon: <ApartmentOutlined />, title: "语义资产" },
   skills: { icon: <ThunderboltOutlined />, title: "技能" },
   plugins: { icon: <ApiOutlined />, title: "插件与数据源" },
@@ -214,6 +217,7 @@ export default function App() {
           )}
 
           {page === "chat" && <ChatPage theme={dark} modelConfigured={ws?.modelConfigured} onGoSettings={() => setPage("settings")} />}
+          {page === "history" && <div className="daw-page"><HistoryPage /></div>}
           {page === "semantics" && <div className="daw-page"><SemanticsPage role={ws?.role} /></div>}
           {page === "skills" && <div className="daw-page"><SkillsPage role={ws?.role} /></div>}
           {page === "plugins" && <div className="daw-page"><PluginsPage onSaved={refresh} /></div>}
