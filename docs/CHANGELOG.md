@@ -274,3 +274,14 @@ P0 桌面端体验三件套(会话持久化/Markdown/工具轨迹)+ P1 dsh 插�
 - **adapter 重写为单轨唯一边界**:core ToolResponse → BeidouToolResult(ok/code/message/data/warnings/evidence/traceId);mock 证据→warnings 显式提示;8 业务工具 + 2 身份工具全部切换;旧 {ok,text,error} 双轨废止
 - **systemPrompt 注入**:ctx.systemPrompt.section("beidou-work:protocol", order=TOOLS_SDK-500)注入路由协议+空间资产清单(修掉 Phase 3 的 `void buildPluginPrompt` 占位);inject 增加 systemPrompt
 - 插件新增 vitest(15 用例:错误归类/策略/转换/遥测);V1 PASS(重打包后真机验证;修复 data 字段缺 additionalProperties 的 DSL 硬约束)
+
+## 0.16.1(2026-09-20)
+
+第五轮外部 review(main@8ec3e6b)第一批 P0 修复:密钥回写/动态身份/登录 Result/过期 fail-closed/导航边界。
+
+- **P0-07 config 密钥回写覆盖(桌面端,最高危)**:config:read 掩码(`***`)→ config:save 原样回写会把真实密钥永久变成字面量 `***`;新增 config-merge.ts restoreMaskedSecrets——提交文本中被掩码的行按 key+缩进从磁盘原文一一还原(同名 key 按顺序对应,原文无对应则保留提交值),save 前执行
+- **P0-01 DSH 身份启动快照(插件)**:删除启动时一次性读 token 的快照;新增 identity-provider.ts createIdentityProvider(复用 core cachedToken 校验),wrapTool 每次工具调用现读 token——beidou_login 成功落盘后无需重启即生效;同时修掉过期窗口写反(`> now-5min` 会放行刚过期的 token,该判断随快照一并删除)
+- **P0-02 登录失败记成功(插件)**:completeLogin 返回 Result(ok:false 是常规失败不抛异常),原 `.then()` 一律记 success;抽出 settleLoginResult 显式分支落 LoginTaskState(polling/success/failed+error),beidou_auth_status 附最近登录任务状态(与日志口径一致)
+- **P0-08 cachedToken 非法/缺失 expires_at fail-open(core)**:0.15.0 声称修过但实际仍 `NaN→未过期`;现在缺失/无法解析/距过期不足 5 分钟一律视为过期(fail-closed),插件动态身份与桌面端 auth:state 同享该修复
+- **P0-06 主窗口导航边界(桌面端)**:setWindowOpenHandler 一律 deny + 仅 http(s) 经 shell.openExternal 放行(file:/javascript:/自定义 scheme 全拒);will-navigate 只允许应用自身 origin(dev server/打包产物),其余 prevent;禁 webview;index.html 加 CSP(script/img/font 限 self,外链图片随之失效;ws 仅限 localhost dev HMR),顺手把标题从 DataAgent Workbench 改为 北斗work
+- 测试:core 206(+3:非法/缺失/刷新窗口过期)+ 插件 24(+9:动态身份 null 覆盖快照/同会话身份变化即时生效/Result 分支/provider 映射)+ 桌面 18(+6:掩码还原);类型检查零错误;插件 dist 重打包;Electron 真机冒烟(深色主题截图验证 CSP/导航改动无回归)

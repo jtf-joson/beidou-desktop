@@ -5,7 +5,7 @@
  */
 import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { createIdaasAuth } from "@beidou-core/auth/idaas";
+import { createIdaasAuth, type IdaasAuth } from "@beidou-core/auth/idaas";
 import type { ErrorCode } from "@beidou/contracts";
 import { BEIDOU_RESULT_SCHEMA, toToolValue, type BeidouToolValue } from "./schemas";
 import { renderBeidouResult, newTraceId } from "./adapter";
@@ -15,7 +15,7 @@ import { appendFile, readFile, writeFile, rename, chmod, mkdir } from "node:fs/p
 import { existsSync } from "node:fs";
 
 const APP_ID = process.env.BEIDOU_IDAAS_APP_ID ?? "beidou-desktop";
-const OPEN_ID = "owner";
+export const OPEN_ID = "owner";
 const AUTH_DIR = join(homedir(), ".beidou", "auth");
 const TOKEN_FILE = join(AUTH_DIR, "apps", APP_ID, "users", `${OPEN_ID}.json`);
 
@@ -26,7 +26,25 @@ const CODE_MAP: Record<string, ErrorCode> = {
   IDAAS_BAD_CACHE: "AUTH_REQUIRED",
 };
 
-function buildAuth() {
+/** 后台登录任务状态(P0-02:成功/失败必须落状态,供 beidou_auth_status 与日志一致读取) */
+export interface LoginTaskState {
+  status: "polling" | "success" | "failed";
+  updatedAt: string;
+  error?: string;
+}
+let loginTask: LoginTaskState | null = null;
+export function getLoginTask(): LoginTaskState | null {
+  return loginTask;
+}
+
+/** settle completeLogin 的 Result:ok:false 是常规失败(非异常),不得记为成功 */
+export function settleLoginResult(r: { ok: true; value: unknown } | { ok: false; error: { message: string } }): void {
+  loginTask = r.ok
+    ? { status: "success", updatedAt: new Date().toISOString() }
+    : { status: "failed", updatedAt: new Date().toISOString(), error: r.error.message };
+}
+
+export function buildIdaasAuth(): IdaasAuth {
   return createIdaasAuth(
     {
       serviceUrl: process.env.BEIDOU_IDAAS_URL ?? "https://idaas-auth-service.example.com",
@@ -58,7 +76,8 @@ function buildAuth() {
   );
 }
 
-export function registerIdentityTools(ctx: Context): void {
+export function registerIdentityTools(ctx: Context, opts: { auth?: IdaasAuth } = {}): void {
+  const auth = opts.auth ?? buildIdaasAuth();
   // beidou_login:返回登录链接(用户浏览器确认),后台轮询
   ctx.tools.register(defineTool({
     name: "beidou_login",
@@ -68,17 +87,24 @@ export function registerIdentityTools(ctx: Context): void {
     async execute(): Promise<BeidouToolValue> {
       const traceId = newTraceId();
       try {
-        const auth = buildAuth();
         const sessionR = await auth.createLoginSession({ openId: OPEN_ID, userName: OPEN_ID });
         if (!sessionR.ok) return toToolValue({ ok: false, code: "INTERNAL_ERROR", message: `创建失败:${sessionR.error.message}`, warnings: [], evidence: [], traceId });
         const { loginUrl, sessionId } = sessionR.value;
 
         // P0-1: 后台轮询 completeLogin(不阻塞工具返回;token 自动保存)
-        let loginStatus = "polling";
+        // P0-2 修复:completeLogin 返回 Result——ok:false(失败/超时/会话过期)不抛异常,
+        // 必须显式分支记录,不得把 resolve 一律当成功。
+        loginTask = { status: "polling", updatedAt: new Date().toISOString() };
         void auth.completeLogin({ sessionId, openId: OPEN_ID, poll: { intervalMs: 3000, maxAttempts: 100 } })
-          .then(() => { loginStatus = "success"; console.log("[beidou-work] IDaaS login completed, token saved"); })
-          .catch((e) => { loginStatus = "failed"; console.error("[beidou-work] IDaaS login failed:", e); });
-        void loginStatus; // loginStatus 供后续 beidou_auth_status 查询
+          .then((r) => {
+            settleLoginResult(r);
+            if (r.ok) console.log("[beidou-work] IDaaS login completed, token saved");
+            else console.error("[beidou-work] IDaaS login failed:", r.error.code, r.error.message);
+          })
+          .catch((e) => {
+            loginTask = { status: "failed", updatedAt: new Date().toISOString(), error: e instanceof Error ? e.message : String(e) };
+            console.error("[beidou-work] IDaaS login error:", e);
+          });
 
         return toToolValue({
           ok: true, code: "OK", traceId,
@@ -98,18 +124,22 @@ export function registerIdentityTools(ctx: Context): void {
   // beidou_auth_status:查询 token 状态
   ctx.tools.register(defineTool({
     name: "beidou_auth_status",
-    description: "检查北斗 IDaaS 登录状态:token 是否存在、是否过期、何时过期。",
+    description: "检查北斗 IDaaS 登录状态:token 是否存在、是否过期、何时过期,以及最近一次后台登录任务的结果。",
     parameters: {},
     output: { schema: BEIDOU_RESULT_SCHEMA, render: renderBeidouResult },
     async execute(): Promise<BeidouToolValue> {
       const traceId = newTraceId();
       try {
-        const auth = buildAuth();
         const r = await auth.cachedToken(OPEN_ID);
+        // P0-2:附最近登录任务状态,保证与登录日志口径一致
+        const task = getLoginTask();
+        const taskLine = task
+          ? `\n最近登录任务:${task.status === "polling" ? "进行中(等待浏览器确认)" : task.status === "success" ? "成功" : `失败(${task.error ?? "未知原因"})`}`
+          : "";
         if (r.ok) {
           return toToolValue({
             ok: true, code: "OK", traceId,
-            message: `✅ 已登录(app_id: ${APP_ID}, open_id: ${OPEN_ID})\n过期时间: ${r.value.expires_at ?? "未知"}\n用户: ${r.value.user_name ?? OPEN_ID}`,
+            message: `✅ 已登录(app_id: ${APP_ID}, open_id: ${OPEN_ID})\n过期时间: ${r.value.expires_at ?? "未知"}\n用户: ${r.value.user_name ?? OPEN_ID}${taskLine}`,
           });
         }
         const reasonMap: Record<string, string> = {
@@ -119,7 +149,7 @@ export function registerIdentityTools(ctx: Context): void {
         };
         return toToolValue({
           ok: false, code: CODE_MAP[r.error.code] ?? "INTERNAL_ERROR", traceId,
-          message: `❌ ${reasonMap[r.error.code] ?? r.error.message}`,
+          message: `❌ ${reasonMap[r.error.code] ?? r.error.message}${taskLine}`,
           warnings: [], evidence: [],
         });
       } catch (e) {

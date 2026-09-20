@@ -14,6 +14,7 @@ import { SessionStore } from "@beidou/core/src/session/store";
 import { bubblesToEvents, agentEventToSessionEvent } from "@beidou/core/src/session/replay";
 import { redactSecrets } from "@beidou/core/src/evidence/pack";
 import { identityFromEptSession, isExpired, type Identity } from "@beidou/core/src/identity/identity";
+import { restoreMaskedSecrets } from "./config-merge";
 import { createIdaasAuth, type IdaasTokenFile, type IdaasAuth } from "@beidou/core/src/auth/idaas";
 import { DEFAULT_POLICY, can, menusFor, resolveRole, type Role } from "@beidou/core/src/rbac/rbac";
 import {
@@ -646,7 +647,14 @@ function registerIpc(): void {
       return { ok: false, error: "当前角色无数据源配置权限" };
     }
     if (!workspace) return { ok: false, error: "no workspace" };
-    await writeFile(join(workspace.dir, "config.yaml"), text, "utf-8");
+    // P0-07 修复:config:read 展示的密钥是 `***`;提交文本中被掩码的行从磁盘原文还原,
+    // 防止"打开配置→改一个字段→保存"把真实密钥覆盖成字面量 ***
+    const configPath = join(workspace.dir, "config.yaml");
+    let original = "";
+    try {
+      original = await readFile(configPath, "utf-8");
+    } catch { /* 首次保存无原文 */ }
+    await writeFile(configPath, restoreMaskedSecrets(text, original), "utf-8");
     await activateSpace(activeSpace(registry)!);
     return { ok: true };
   });
@@ -724,6 +732,31 @@ app?.whenReady?.().then(async () => {
       nodeIntegration: false,
     },
   });
+
+  // P0-06 导航边界:主窗口只允许加载应用自身内容(dev server 或打包产物);
+  // 外部链接一律拒绝在窗口内打开,仅 http(s) 经系统浏览器放行。
+  const appOrigin = process.env.ELECTRON_RENDERER_URL
+    ? new URL(process.env.ELECTRON_RENDERER_URL).origin
+    : `file://${join(__dirname, "../renderer")}`;
+  const openExternalSafe = async (raw: string): Promise<void> => {
+    try {
+      const u = new URL(raw);
+      if (u.protocol !== "https:" && u.protocol !== "http:") return; // file:/javascript:/自定义 scheme 全拒
+      const { shell } = await import("electron");
+      await shell.openExternal(u.href).catch(() => undefined);
+    } catch { /* 非法 URL 忽略 */ }
+  };
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    void openExternalSafe(url);
+    return { action: "deny" };
+  });
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (url.startsWith(appOrigin)) return;
+    event.preventDefault();
+    void openExternalSafe(url);
+  });
+  mainWindow.webContents.on("will-attach-webview", (event) => event.preventDefault());
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });

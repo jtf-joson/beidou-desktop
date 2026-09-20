@@ -10,46 +10,52 @@ import { BEIDOU_RESULT_SCHEMA, toToolValue, type BeidouToolValue } from "./schem
 import { toBeidouResult, newTraceId, type CoreToolResponse } from "./adapter";
 import { decideToolAccess } from "./policy";
 import { createTelemetrySink, withTelemetry } from "./telemetry";
+import type { GetIdentity, PluginIdentity } from "./identity-provider";
 
 type ParamSpec = Record<string, { type: "string" | "number" | "boolean" | "array" | "object"; required: boolean; description?: string; additionalProperties?: boolean }>;
+type TelemetrySink = ReturnType<typeof createTelemetrySink>;
 
-export interface ToolRuntime {
-  tools: ToolSet;
-  identity?: { username: string; source: string };
+/**
+ * 单轨包装(P0-01:身份动态化)。每次调用现取身份:
+ * 优先 getIdentity()(现读 token 缓存,登录后无需重启即生效);
+ * 未提供时回退启动快照。链路:身份 → 策略 → 遥测 → core → BeidouToolResult。
+ */
+export async function wrapTool(opts: {
+  name: string;
+  args: Record<string, never>;
+  handler: (args: Record<string, never>) => Promise<CoreToolResponse>;
+  telemetry: TelemetrySink;
   sessionId: string;
-  telemetry: ReturnType<typeof createTelemetrySink>;
+  /** 启动时身份快照(未提供动态提供者时的兜底) */
+  identity?: PluginIdentity;
+  /** 动态身份提供者:提供时快照被忽略 */
+  getIdentity?: GetIdentity;
+}): Promise<BeidouToolValue> {
+  const traceId = newTraceId();
+  const identity = opts.getIdentity ? await opts.getIdentity() : opts.identity;
+  const policy = decideToolAccess({ tool: opts.name, identity: identity ?? undefined });
+  const userId = identity?.username ?? "anonymous";
+  const inputSummary = JSON.stringify(opts.args).slice(0, 200);
+  if (policy.decision === "deny") {
+    await opts.telemetry.append({
+      timestamp: new Date().toISOString(), traceId, sessionId: opts.sessionId, userId,
+      tool: opts.name, inputSummary, policyDecision: "deny", resultCode: policy.code ?? "FORBIDDEN",
+    });
+    return toToolValue({ ok: false, code: policy.code ?? "FORBIDDEN", message: policy.reason ?? "denied", warnings: [], evidence: [], traceId });
+  }
+  return withTelemetry(
+    opts.telemetry,
+    { traceId, sessionId: opts.sessionId, tool: opts.name, inputSummary, userId, policyDecision: "allow" },
+    async () => toToolValue(toBeidouResult(await opts.handler(opts.args), { tool: opts.name, traceId })),
+  );
 }
 
-export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void {
+export function registerBusinessTools(ctx: Context, toolCtx: ToolContext, getIdentity?: GetIdentity): void {
   const tools: ToolSet = createTools(toolCtx);
-  const rt: ToolRuntime = {
-    tools,
-    identity: toolCtx.identity ? { username: toolCtx.identity.username, source: toolCtx.identity.source } : undefined,
-    sessionId: toolCtx.sessionId,
-    telemetry: createTelemetrySink({ sessionId: toolCtx.sessionId, audit: toolCtx.audit }),
-  };
-
-  /** 单轨包装:策略 → traceId → 遥测 → core → BeidouToolResult */
-  const wrap =
-    (name: string, handler: (args: Record<string, never>) => Promise<CoreToolResponse>) =>
-    async (args: Record<string, never>): Promise<BeidouToolValue> => {
-      const traceId = newTraceId();
-      const policy = decideToolAccess({ tool: name, identity: rt.identity });
-      const userId = rt.identity?.username ?? "anonymous";
-      const inputSummary = JSON.stringify(args).slice(0, 200);
-      if (policy.decision === "deny") {
-        await rt.telemetry.append({
-          timestamp: new Date().toISOString(), traceId, sessionId: rt.sessionId, userId,
-          tool: name, inputSummary, policyDecision: "deny", resultCode: policy.code ?? "FORBIDDEN",
-        });
-        return toToolValue({ ok: false, code: policy.code ?? "FORBIDDEN", message: policy.reason ?? "denied", warnings: [], evidence: [], traceId });
-      }
-      return withTelemetry(
-        rt.telemetry,
-        { traceId, sessionId: rt.sessionId, tool: name, inputSummary, userId, policyDecision: "allow" },
-        async () => toToolValue(toBeidouResult(await handler(args), { tool: name, traceId })),
-      );
-    };
+  const telemetry: TelemetrySink = createTelemetrySink({ sessionId: toolCtx.sessionId, audit: toolCtx.audit });
+  const fallbackIdentity: PluginIdentity | undefined = toolCtx.identity
+    ? { username: toolCtx.identity.username, source: toolCtx.identity.source }
+    : undefined;
 
   const def = (name: string, description: string, parameters: ParamSpec, handler: (args: Record<string, never>) => Promise<CoreToolResponse>) => {
     // dsh-tools 的 ParameterSchemaSpec 过窄(要求字面量类型联合),此处运行时形状正确,用类型断言通过编译
@@ -67,7 +73,7 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
         }) as any,
       },
       async execute(args: Record<string, never>) {
-        return wrap(name, handler)(args);
+        return wrapTool({ name, args, handler, telemetry, sessionId: toolCtx.sessionId, identity: fallbackIdentity, getIdentity });
       },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);

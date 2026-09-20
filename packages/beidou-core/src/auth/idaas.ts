@@ -65,9 +65,10 @@ export function createIdaasAuth(config: IdaasConfig, deps: IdaasDeps) {
     `auth/apps/${config.appId}/users/${encodeURIComponent(openId)}.json`;
 
   const isExpired = (t: IdaasTokenFile): boolean => {
-    if (!t.expires_at) return false;
+    // fail-closed:缺失或无法解析的 expires_at 一律视为过期——损坏 token 不得通过缓存校验
+    if (!t.expires_at) return true;
     const exp = new Date(t.expires_at).getTime();
-    if (Number.isNaN(exp)) return false;
+    if (Number.isNaN(exp)) return true;
     return deps.now().getTime() >= exp - EXPIRY_MARGIN_MS;
   };
 

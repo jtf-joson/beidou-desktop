@@ -95,6 +95,25 @@ describe("IDaaS auth-service 客户端(idaas-auth-protocol 协议)", () => {
     if (!r.ok) expect(r.error.code).toBe("IDAAS_TOKEN_EXPIRED");
   });
 
+  it("cachedToken:expires_at 非法/缺失 → fail-closed 视为过期(审核 P0-08)", async () => {
+    for (const bad of ["not-a-date", "", undefined]) {
+      const token = { status: "valid", authorization: "Bearer x", expires_at: bad };
+      const { deps } = makeDeps([]);
+      deps.readFile = async () => JSON.stringify(token);
+      const r = await createIdaasAuth(CFG, deps).cachedToken("demo_user");
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error.code).toBe("IDAAS_TOKEN_EXPIRED");
+    }
+  });
+
+  it("cachedToken:距过期不足 5 分钟(刷新窗口内)→ 视为过期", async () => {
+    const token = { status: "valid", authorization: "Bearer x", expires_at: "2026-09-18T08:03:00Z" };
+    const { deps } = makeDeps([]);
+    deps.readFile = async () => JSON.stringify(token);
+    const r = await createIdaasAuth(CFG, deps).cachedToken("demo_user");
+    expect(r.ok).toBe(false);
+  });
+
   it("refresh:服务端续期后重新下载并覆盖缓存", async () => {
     const { deps, calls } = makeDeps([
       { url: "", body: { status: "valid" } },

@@ -6,7 +6,8 @@ import type { Context } from "@deepseek-ai/cordis";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { registerBusinessTools } from "./tools";
-import { registerIdentityTools } from "./idaas-tool";
+import { registerIdentityTools, buildIdaasAuth, OPEN_ID } from "./idaas-tool";
+import { createIdentityProvider } from "./identity-provider";
 import { buildPluginContext } from "./context";
 import { buildPluginPrompt } from "./prompt";
 import type { ToolContext } from "@beidou-core/tools/tools";
@@ -41,20 +42,13 @@ export function apply(ctx: Context) {
     dataSource: built.toolContextOverrides.dataSource,
   };
 
-  // P0-01 修复:真正读取 token 缓存文件(而非抛 "no cache")
-  try {
-    const { join: j } = await import("node:path");
-    const { homedir: hd } = await import("node:os");
-    const { readFile: rf } = await import("node:fs/promises");
-    const appId = process.env.BEIDOU_IDAAS_APP_ID ?? "beidou-desktop";
-    const tokenFile = j(hd(), ".beidou", "auth", "apps", appId, "users", "owner.json");
-    const raw = await rf(tokenFile, "utf-8");
-    const parsed = JSON.parse(raw) as { user_name?: string; expires_at?: string };
-    // 简单过期检查(详细校验由 beidou_auth_status 工具做)
-    if (parsed.expires_at && new Date(parsed.expires_at).getTime() > Date.now() - 5 * 60_000) {
-      toolCtx.identity = { username: parsed.user_name ?? "owner", source: "idaas-token" };
-    }
-  } catch { /* 未登录/无缓存 = 无身份,正常 */ }
+  // P0-01 修复:身份不再启动快照。业务工具每次调用经 createIdentityProvider 现读
+  // token 缓存并校验(cachedToken fail-closed),beidou_login 成功落盘后即刻生效。
+  const auth = buildIdaasAuth();
+  const getIdentity = createIdentityProvider(auth, OPEN_ID);
+  void getIdentity().then((id) =>
+    console.log("[beidou-work] startup identity:", id ? id.username : "(not logged in)"),
+  );
 
   // P1 systemPrompt:路由协议 + 空间资产清单注入 dsh 系统 prompt。
   // 位置:TOOLS_SDK(5000)之前——业务协议先于工具 schema 呈现给模型。
@@ -64,10 +58,10 @@ export function apply(ctx: Context) {
     text: buildPluginPrompt(built.workspace),
   });
 
-  registerBusinessTools(ctx, toolCtx);
-  registerIdentityTools(ctx); // Phase 4:身份工具 ×2
+  registerBusinessTools(ctx, toolCtx, getIdentity);
+  registerIdentityTools(ctx, { auth }); // Phase 4:身份工具 ×2
 
-  console.log("[beidou-work] 8 business + 2 identity tools registered (BeidouToolResult 单轨), systemPrompt injected, mock:", built.isMock);
+  console.log("[beidou-work] 8 business + 2 identity tools registered (BeidouToolResult 单轨, 动态身份), systemPrompt injected, mock:", built.isMock);
   })().catch((e) => {
     console.error("[beidou-work] FATAL: context build failed:", e);
     throw e; // 让插件启动失败(非静默)
