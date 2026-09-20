@@ -1,11 +1,10 @@
 /**
- * 北斗work dsh 插件入口(Phase 3:8 业务工具全量接线)。
- * V1 空壳 + V2 语义检索 + V3 指标 + V4 下钻 + V5 诊断 + V6 审计。
+ * 北斗work dsh 插件入口(Phase 3:8 业务工具全量接线;P1-3:协议单轨 BeidouToolResult)。
+ * V1 空壳 + V2 语义检索 + V3 指标 + V4 下钻 + V5 诊断 + V6 审计 + P1 systemPrompt 注入。
  */
 import type { Context } from "@deepseek-ai/cordis";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { defineTool } from "@deepseek-ai/dsh-tools";
 import { registerBusinessTools } from "./tools";
 import { registerIdentityTools } from "./idaas-tool";
 import { buildPluginContext } from "./context";
@@ -13,7 +12,7 @@ import { buildPluginPrompt } from "./prompt";
 import type { ToolContext } from "@beidou-core/tools/tools";
 
 export const name = "beidou-work";
-export const inject = ["tools"];
+export const inject = ["tools", "systemPrompt"];
 
 export function apply(ctx: Context) {
   const workspace = process.env.BEIDOU_WORKSPACE ?? join(homedir(), "Library/Application Support/北斗work/workspace");
@@ -57,11 +56,18 @@ export function apply(ctx: Context) {
     }
   } catch { /* 未登录/无缓存 = 无身份,正常 */ }
 
+  // P1 systemPrompt:路由协议 + 空间资产清单注入 dsh 系统 prompt。
+  // 位置:TOOLS_SDK(5000)之前——业务协议先于工具 schema 呈现给模型。
+  ctx.systemPrompt.section({
+    name: "beidou-work:protocol",
+    order: ctx.systemPrompt.getSectionOrder("TOOLS_SDK") - 500,
+    text: buildPluginPrompt(built.workspace),
+  });
+
   registerBusinessTools(ctx, toolCtx);
   registerIdentityTools(ctx); // Phase 4:身份工具 ×2
-  void buildPluginPrompt;
 
-  console.log("[beidou-work] 8 business + 2 identity tools registered, mock:", built.isMock);
+  console.log("[beidou-work] 8 business + 2 identity tools registered (BeidouToolResult 单轨), systemPrompt injected, mock:", built.isMock);
   })().catch((e) => {
     console.error("[beidou-work] FATAL: context build failed:", e);
     throw e; // 让插件启动失败(非静默)

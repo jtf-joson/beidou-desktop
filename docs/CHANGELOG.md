@@ -257,3 +257,20 @@ Phase 4 闭环:Identity 贯穿 + AuthStore 统一 + 多 Profile 接线。
 - **P0-04** idaas.ts cachedToken 非法过期时间 = 过期(fail-closed,与 identity.ts 对齐)
 - **P0-05** Desktop token 原子写 rename 失败抛错 + 清理 tmp(与 DSH 版本对齐)
 - 192 core + 12 desktop = 204 测试
+
+## 0.16.0(2026-09-20)
+
+P0 桌面端体验三件套(会话持久化/Markdown/工具轨迹)+ P1 dsh 插件协议单轨与 systemPrompt。
+
+### P0:会话持久化 + Markdown 渲染 + 工具轨迹(北斗work 桌面端)
+- **会话持久化(JSONL,文件即权威源)**:core 新增 `session/`(SessionStore 追加式 JSONL + replayEvents 回放 + bubblesToEvents 迁移 + agentEventToSessionEvent 共享映射);主进程 agent 事件流全量落 `<workspace>/sessions/<id>.jsonl`,恢复=回放(与渲染端实时 reducer 同一条代码路径,不存快照);renderer 旧 localStorage 会话一次性迁移入盘;会话按空间隔离(惰性路径,修复 registerIpc 早于 bootstrapSpaces 的时序);单行损坏容忍 + sessionId 白名单防目录穿越
+- **Markdown 渲染**:marked(GFM+breaks)+ DOMPurify 白名单净化;表格/代码块/引用/列表全样式(深浅主题适配);正文气泡不再 pre-wrap
+- **工具轨迹视图**:工具 chip 升级为可折叠轨迹(步数/状态点:执行中脉冲·成功·失败/摘要/入参 JSON 展开),替代旧纯文本 chip;错误事件落气泡内红色横幅(此前静默丢失)
+- **修复**:monorepo 迁移后主进程运行时 require @beidou/ontology-schema 失败(vite 未排除外部化 + 别名缺失)——`npx electron .` 自 Phase 2 起实际无法启动,现一并修复并用 DEBUG 截图钩子真机验证(深浅双主题 × 种子会话回放)
+- core +12 测试(回放同构/迁移 round-trip/穿越防护/损坏行);252 测试全绿
+
+### P1:协议单轨(BeidouToolResult)+ systemPrompt(dsh 插件)
+- **协议层四件套**(packages/dsh-plugin-beidou/src/):errors.ts(自然语言错误→12 契约错误码,括号内裸码直通)/ schemas.ts(BEIDOU_RESULT_SCHEMA,dsh DSL 全必填+object 显式 additionalProperties)/ policy.ts(业务工具未登录→deny AUTH_REQUIRED;身份工具放行)/ telemetry.ts(AuditEventV2:时长/结果码/策略裁决/traceId,成功/失败/抛错三路径都有事件,遥测落盘失败不阻塞)
+- **adapter 重写为单轨唯一边界**:core ToolResponse → BeidouToolResult(ok/code/message/data/warnings/evidence/traceId);mock 证据→warnings 显式提示;8 业务工具 + 2 身份工具全部切换;旧 {ok,text,error} 双轨废止
+- **systemPrompt 注入**:ctx.systemPrompt.section("beidou-work:protocol", order=TOOLS_SDK-500)注入路由协议+空间资产清单(修掉 Phase 3 的 `void buildPluginPrompt` 占位);inject 增加 systemPrompt
+- 插件新增 vitest(15 用例:错误归类/策略/转换/遥测);V1 PASS(重打包后真机验证;修复 data 字段缺 additionalProperties 的 DSL 硬约束)

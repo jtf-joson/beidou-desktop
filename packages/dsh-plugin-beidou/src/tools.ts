@@ -1,39 +1,80 @@
 /**
- * 8 个业务工具注册(dsh defineTool)。
+ * 8 个业务工具注册(dsh defineTool)。P1-3:输出单轨 BeidouToolResult。
  * 参数语义照抄 apps/desktop/src/main/agent/sdk-runner.ts;schema 遵守 dsh DSL(全必填/additionalProperties 显式)。
  * 可选参数 → required: false(dsh DSL 允许 required: false 但必须显式声明)。
  */
 import type { Context } from "@deepseek-ai/cordis";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { createTools, type ToolContext, type ToolSet } from "@beidou-core/tools/tools";
-import { TOOL_OUTPUT_SCHEMA, renderToolResponse, toToolValue } from "./adapter";
+import { BEIDOU_RESULT_SCHEMA, toToolValue, type BeidouToolValue } from "./schemas";
+import { toBeidouResult, newTraceId, type CoreToolResponse } from "./adapter";
+import { decideToolAccess } from "./policy";
+import { createTelemetrySink, withTelemetry } from "./telemetry";
 
 type ParamSpec = Record<string, { type: "string" | "number" | "boolean" | "array" | "object"; required: boolean; description?: string; additionalProperties?: boolean }>;
 
-function toolDef(
-  name: string,
-  description: string,
-  parameters: ParamSpec,
-  handler: (args: Record<string, never>) => Promise<{ ok: boolean; text: string; error?: string }>,
-) {
-  // dsh-tools 的 ParameterSchemaSpec 过窄(要求字面量类型联合),此处运行时形状正确,用类型断言通过编译
-  return defineTool({
-    name,
-    description,
-    parameters,
-    output: { schema: TOOL_OUTPUT_SCHEMA, render: renderToolResponse },
-    async execute(args: Record<string, never>) {
-      return toToolValue(await handler(args));
-    },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any) as ReturnType<typeof defineTool>;
+export interface ToolRuntime {
+  tools: ToolSet;
+  identity?: { username: string; source: string };
+  sessionId: string;
+  telemetry: ReturnType<typeof createTelemetrySink>;
 }
 
 export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void {
   const tools: ToolSet = createTools(toolCtx);
+  const rt: ToolRuntime = {
+    tools,
+    identity: toolCtx.identity ? { username: toolCtx.identity.username, source: toolCtx.identity.source } : undefined,
+    sessionId: toolCtx.sessionId,
+    telemetry: createTelemetrySink({ sessionId: toolCtx.sessionId, audit: toolCtx.audit }),
+  };
+
+  /** 单轨包装:策略 → traceId → 遥测 → core → BeidouToolResult */
+  const wrap =
+    (name: string, handler: (args: Record<string, never>) => Promise<CoreToolResponse>) =>
+    async (args: Record<string, never>): Promise<BeidouToolValue> => {
+      const traceId = newTraceId();
+      const policy = decideToolAccess({ tool: name, identity: rt.identity });
+      const userId = rt.identity?.username ?? "anonymous";
+      const inputSummary = JSON.stringify(args).slice(0, 200);
+      if (policy.decision === "deny") {
+        await rt.telemetry.append({
+          timestamp: new Date().toISOString(), traceId, sessionId: rt.sessionId, userId,
+          tool: name, inputSummary, policyDecision: "deny", resultCode: policy.code ?? "FORBIDDEN",
+        });
+        return toToolValue({ ok: false, code: policy.code ?? "FORBIDDEN", message: policy.reason ?? "denied", warnings: [], evidence: [], traceId });
+      }
+      return withTelemetry(
+        rt.telemetry,
+        { traceId, sessionId: rt.sessionId, tool: name, inputSummary, userId, policyDecision: "allow" },
+        async () => toToolValue(toBeidouResult(await handler(args), { tool: name, traceId })),
+      );
+    };
+
+  const def = (name: string, description: string, parameters: ParamSpec, handler: (args: Record<string, never>) => Promise<CoreToolResponse>) => {
+    // dsh-tools 的 ParameterSchemaSpec 过窄(要求字面量类型联合),此处运行时形状正确,用类型断言通过编译
+    return defineTool({
+      name,
+      description,
+      parameters,
+      output: {
+        schema: BEIDOU_RESULT_SCHEMA,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        render: ((_args: Record<string, unknown>, value: any) => {
+          if (!value?.ok) return [{ type: "text" as const, text: JSON.stringify({ code: value?.code, message: value?.message, traceId: value?.traceId }) }];
+          const warn = value.warnings?.length ? `\n\n⚠️ ${value.warnings.join(";")}` : "";
+          return [{ type: "text" as const, text: `${value.message}${warn}` }];
+        }) as any,
+      },
+      async execute(args: Record<string, never>) {
+        return wrap(name, handler)(args);
+      },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+  };
 
   // 1. search_semantics
-  ctx.tools.register(toolDef(
+  ctx.tools.register(def(
     "search_semantics",
     "语义检索:在指标/数据集/术语/本体/物理表中查找候选,返回路由建议。回答任何数据问题前必须先调用。",
     {
@@ -44,7 +85,7 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
   ));
 
   // 2. query_metrics
-  ctx.tools.register(toolDef(
+  ctx.tools.register(def(
     "query_metrics",
     "查指标:按口径一致的编译 SQL 计算指标值(时间范围与维度可选)。",
     {
@@ -56,7 +97,7 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
   ));
 
   // 3. query_dataset
-  ctx.tools.register(toolDef(
+  ctx.tools.register(def(
     "query_dataset",
     "数据集查询。mode=drilldown 口径一致下钻;mode=explore 受控明细分析。",
     {
@@ -76,7 +117,7 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
   ));
 
   // 4. clarify
-  ctx.tools.register(toolDef(
+  ctx.tools.register(def(
     "clarify",
     "证据不足时向用户提出澄清问题(时间/口径/维度),不得猜测。",
     {
@@ -86,7 +127,7 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
   ));
 
   // 5. diagnose_metric
-  ctx.tools.register(toolDef(
+  ctx.tools.register(def(
     "diagnose_metric",
     "智能诊断与归因:两期总量对比、异常检测、维度贡献拆解(Top 贡献者),返回结构化结果。",
     {
@@ -99,7 +140,7 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
   ));
 
   // 6. search_knowledge
-  ctx.tools.register(toolDef(
+  ctx.tools.register(def(
     "search_knowledge",
     "检索空间业务知识库(业务背景/口径解释/既往结论)。",
     {
@@ -109,7 +150,7 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
   ));
 
   // 7. read_playbook
-  ctx.tools.register(toolDef(
+  ctx.tools.register(def(
     "read_playbook",
     "读取空间业务 Playbook(分析 SOP)。",
     {
@@ -119,7 +160,7 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
   ));
 
   // 8. list_ontology
-  ctx.tools.register(toolDef(
+  ctx.tools.register(def(
     "list_ontology",
     "本体导航:按子域列出 class(属性/指标/表指针)、action(诊断入口)结构。",
     {
@@ -128,3 +169,4 @@ export function registerBusinessTools(ctx: Context, toolCtx: ToolContext): void 
     async (args) => tools.list_ontology({ subdomain: (args.subdomain === '' ? undefined : args.subdomain) as never }),
   ));
 }
+

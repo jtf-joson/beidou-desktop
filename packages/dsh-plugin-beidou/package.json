@@ -5,16 +5,20 @@
   "description": "北斗work 的 DeepSeek Harness 插件(Phase 1:空壳 + ping 工具;工具全量接线在 Phase 3/4)",
   "main": "src/index.ts",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@beidou/contracts": "file:../domain-contracts",
+    "@beidou/core": "file:../beidou-core",
+    "@beidou/ontology-schema": "file:../ontology-schema",
     "@deepseek-ai/cordis": "4.0.2",
     "@deepseek-ai/dsh-tools": "0.1.5-rc.2",
-    "@beidou/core": "file:../beidou-core",
-    "@beidou/contracts": "file:../domain-contracts",
     "mysql2": "3.11.0",
-    "@beidou/ontology-schema": "file:../ontology-schema",
     "yaml": "2.5.0"
   },
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  }
 }
