@@ -1,4 +1,6 @@
-# 北斗work 专用 DSH profile(Phase A 工具边界验证)。
+# 北斗work DSH Web profile(产品对话页用;Phase A 工具边界)。
+# 一次性 headless 验证不要用本 profile 直接带位置参数——官方一次性任务由
+# dsh-headless 提供,正确用法见 profiles/README.md(--patch 叠加本文件)。
 #
 # 组成:dsh-base + dsh-web-app(web 对话 UI),经本层把 dsh-base 挂载的全部内置
 # 执行工具按行 id 逐一禁用(loader 语义:按 id 重述整行,disabled=true 即不启动),

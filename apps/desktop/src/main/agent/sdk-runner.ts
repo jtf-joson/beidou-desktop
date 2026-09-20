@@ -4,7 +4,7 @@
  * 注:SDK 仅发行 ESM,主进程为 CJS 打包,故用动态 import。
  */
 import type { AgentEvent } from "./service";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -38,9 +38,24 @@ function resolveClaudeExecutable(): string | undefined {
   return candidates.find((p) => existsSync(p));
 }
 
-/** 空 cwd:不给文件类工具任何可读的业务内容(workspace 含 config.yaml 与会话记录) */
-function makeSandboxCwd(): string {
-  return mkdtempSync(join(tmpdir(), "beidou-agent-"));
+/** 空沙箱(审核六轮 P1-04):cwd + HOME + XDG 全部指向临时目录,不给文件类
+ * 工具任何可读的业务内容与用户配置(~/.dsh、~/.claude、凭据等);结束后递归删除 */
+function makeAgentSandbox(): { root: string; cwd: string; env: Record<string, string> } {
+  const root = mkdtempSync(join(tmpdir(), "beidou-agent-"));
+  const cwd = join(root, "cwd");
+  const home = join(root, "home");
+  mkdirSync(cwd, { recursive: true });
+  mkdirSync(join(home, ".config"), { recursive: true });
+  mkdirSync(join(home, ".local", "share"), { recursive: true });
+  return {
+    root,
+    cwd,
+    env: {
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, ".config"),
+      XDG_DATA_HOME: join(home, ".local", "share"),
+    },
+  };
 }
 
 type ToolSetLike = {
@@ -149,19 +164,21 @@ export async function runSdkAgent(input: {
     ],
   });
 
+  const sandbox = makeAgentSandbox();
   const q = query({
     prompt: input.userMessage,
     options: {
-      cwd: makeSandboxCwd(), // 空沙箱目录(不再用 workspace——含 key 与会话记录)
+      cwd: sandbox.cwd, // 空沙箱目录(不再用 workspace——含 key 与会话记录)
       systemPrompt: input.systemPrompt,
       disallowedTools: DISALLOWED_BUILTIN_TOOLS,
       pathToClaudeCodeExecutable: resolveClaudeExecutable(),
       env: {
-        // P0-4:allowlist 而非全量 process.env(防内网凭据泄漏到 Agent SDK)
+        // P0-4:allowlist 而非全量 process.env(防内网凭据泄漏到 Agent SDK);
+        // HOME/XDG 指向沙箱(P1-04:denylist 漏项时的最后防线)
         PATH: process.env.PATH ?? "",
-        HOME: process.env.HOME ?? "",
         LANG: process.env.LANG ?? "",
         TERM: process.env.TERM ?? "",
+        ...sandbox.env,
         ...input.env,
       } as Record<string, string>,
       mcpServers: { "data-workbench": server },
@@ -178,33 +195,38 @@ export async function runSdkAgent(input: {
 
   let finalText = "";
   let lastAssistantText = "";
-  for await (const msg of q) {
-    if (msg.type === "assistant") {
-      for (const block of msg.message.content) {
-        if (block.type === "text" && block.text.trim()) {
-          lastAssistantText = block.text;
-          input.onEvent({ type: "assistant", text: block.text });
-        } else if (block.type === "tool_use") {
-          input.onEvent({ type: "tool", name: block.name, input: block.input });
+  try {
+    for await (const msg of q) {
+      if (msg.type === "assistant") {
+        for (const block of msg.message.content) {
+          if (block.type === "text" && block.text.trim()) {
+            lastAssistantText = block.text;
+            input.onEvent({ type: "assistant", text: block.text });
+          } else if (block.type === "tool_use") {
+            input.onEvent({ type: "tool", name: block.name, input: block.input });
+          }
         }
-      }
-    } else if (msg.type === "user") {
-      for (const block of msg.message.content) {
-        if (typeof block === "object" && block !== null && (block as { type?: string }).type === "tool_result") {
-          const tr = block as { is_error?: boolean };
-          input.onEvent({ type: "tool_result", name: "(tool)", ok: !tr.is_error, summary: tr.is_error ? "失败" : "完成" });
+      } else if (msg.type === "user") {
+        for (const block of msg.message.content) {
+          if (typeof block === "object" && block !== null && (block as { type?: string }).type === "tool_result") {
+            const tr = block as { is_error?: boolean };
+            input.onEvent({ type: "tool_result", name: "(tool)", ok: !tr.is_error, summary: tr.is_error ? "失败" : "完成" });
+          }
         }
-      }
-    } else if (msg.type === "result") {
-      const rmsg = msg as { result?: unknown; subtype?: string; is_error?: boolean };
-      if (rmsg.is_error || (rmsg.subtype ?? "").startsWith("error_")) {
-        input.onEvent({ type: "error", message: `Agent 会话异常结束:${rmsg.subtype ?? "unknown"}` });
-        finalText = ""; // 错误结果不伪装成回答
-      } else {
-        const r = rmsg.result;
-        finalText = typeof r === "string" ? r : "";
+      } else if (msg.type === "result") {
+        const rmsg = msg as { result?: unknown; subtype?: string; is_error?: boolean };
+        if (rmsg.is_error || (rmsg.subtype ?? "").startsWith("error_")) {
+          input.onEvent({ type: "error", message: `Agent 会话异常结束:${rmsg.subtype ?? "unknown"}` });
+          finalText = ""; // 错误结果不伪装成回答
+        } else {
+          const r = rmsg.result;
+          finalText = typeof r === "string" ? r : "";
+        }
       }
     }
+  } finally {
+    // P1-04:沙箱用后即删(临时目录不积累)
+    rmSync(sandbox.root, { recursive: true, force: true });
   }
   return finalText || lastAssistantText;
 }

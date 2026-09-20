@@ -10,12 +10,12 @@ import { queryStarRocks } from "@beidou/core/src/services/starrocks";
 import { createMockStarRocks } from "@beidou/core/src/services/mock-starrocks";
 import { mysqlConnector } from "./starrocks-connector";
 import { createAuditLog } from "@beidou/core/src/audit/log";
-import { SessionStore } from "@beidou/core/src/session/store";
 import { bubblesToEvents, agentEventToSessionEvent } from "@beidou/core/src/session/replay";
 import { redactSecrets } from "@beidou/core/src/evidence/pack";
 import { identityFromEptSession, isExpired, type Identity } from "@beidou/core/src/identity/identity";
 import { restoreMaskedSecrets } from "./config-merge";
-import { readModelSection, mergeModelSection, resolveModelToken, testModelEndpoint } from "./model-config";
+import { createSessionStoreFactory } from "./session-store-factory";
+import { readModelSection, mergeModelSection, writeConfigAtomic, resolveModelToken, testModelEndpoint } from "./model-config";
 import { createIdaasAuth, type IdaasTokenFile, type IdaasAuth } from "@beidou/core/src/auth/idaas";
 import { DEFAULT_POLICY, can, menusFor, resolveRole, type Role } from "@beidou/core/src/rbac/rbac";
 import {
@@ -577,7 +577,9 @@ function registerIpc(): void {
   // ---- 会话持久化(JSONL 追加式,文件即权威源;恢复=回放) ----
   // 惰性取路径:registerIpc 早于 bootstrapSpaces,构造时 workspace 尚未激活;
   // 且会话按空间隔离,必须跟随当前激活空间。
-  const sessionStore = () => new SessionStore(join(workspace?.dir ?? USER_DATA, "sessions"));
+  // P0-01 修复:实例按目录缓存——串行写队列是实例字段,每次 new 会让每个事件
+  // 各拿空队列,乱序问题在主进程实际路径复现(审核六轮)。
+  const sessionStore = createSessionStoreFactory(() => workspace?.dir, USER_DATA);
 
   ipcMain.handle("session:list", async () => await sessionStore().list());
   ipcMain.handle("session:read", async (_e, sessionId: string) => await sessionStore().read(sessionId));
@@ -693,12 +695,18 @@ function registerIpc(): void {
     try {
       raw = await readFile(configPath, "utf-8");
     } catch { /* 首次保存 */ }
-    await writeFile(configPath, mergeModelSection(raw, patch), "utf-8");
+    // P0-02 修复:原 YAML 损坏时 fail-closed 拒绝保存(旧实现会静默清空其他配置段)
+    const merged = mergeModelSection(raw, patch);
+    if (!merged.ok) return { ok: false, error: merged.error };
+    await writeConfigAtomic(configPath, merged.value);
     await activateSpace(activeSpace(registry)!); // 重建 AgentService,配置即时生效
     return { ok: true };
   });
 
   ipcMain.handle("model:test", async () => {
+    if (!can(currentRole(), "config:save", DEFAULT_POLICY)) {
+      return { ok: false, message: "当前角色无模型测试权限" };
+    }
     const { m } = await modelSection();
     const token = resolveModelToken(m);
     if (!token) return { ok: false, message: "未配置 API Key(设置页填入后测试)" };

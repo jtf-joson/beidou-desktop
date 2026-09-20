@@ -304,3 +304,14 @@ P0 桌面端体验三件套(会话持久化/Markdown/工具轨迹)+ P1 dsh 插�
 - **修复**:electron-builder asarUnpack 解出 SDK 平台包为真实文件;sdk-runner 打包态经 `pathToClaudeCodeExecutable`(SDK 官方选项)显式指向 `app.asar.unpacked/.../claude`,dev 态回退 SDK 默认解析
 - **验证**:DEBUG 钩子新增 `DDAW_SEND="问题"`(主进程端到端直跑一轮,事件流打日志);打包产物实测:真实 DeepSeek 调用 → search_semantics 工具 → 语义感知回答 → evidence → done 全链路成功
 - 注意:安装后目录因解出的原生引擎增大约 214MB(dmg 压缩后体积基本不变)
+
+## 0.16.4(2026-09-20)
+
+第六轮审核(main@964f142)第一批 P0 修复。
+
+- **P0-01 串行队列在主进程实际路径失效**:core 的按会话写队列是实例字段,而主进程 sessionStore() 工厂每次调用都 new 新实例——每个事件各拿空队列,乱序问题在生产路径并未修复(单测同实例掩盖了这一点)。修:session-store-factory.ts 按目录缓存实例(空间切换自动重建);回归测试覆盖"每次 append 都重调工厂"的真实调用姿势(30 并发保序)
+- **P0-02 模型配置坏 YAML 清空整配置**:mergeModelSection 解析失败原为 doc={} 后只写回 model 段,starrocks/auth/connections 全丢。修:返回 Result fail-closed(解析失败/根节点非映射均拒绝保存并提示人工修复;含数组根节点判定);writeConfigAtomic 临时文件+rename 原子写+写前 .bak 备份
+- **model:test 补权限校验**(与 model:save 同 config:save 权限)
+- **P1-04a SDK 沙箱彻底隔离+清理**:HOME/XDG_CONFIG_HOME/XDG_DATA_HOME 全部指向临时沙箱(denylist 漏项时的最后防线,真实 ~/.dsh、~/.claude、凭据不可达);cwd/home 目录随用随删(finally rmSync,实测 /tmp 零残留)
+- **P0-03 profile 拆分**:beidou → beidou-web(明确为产品对话页 profile);一次性 headless 验证的官方正确姿势写入 profiles/README.md(--profile headless --patch 叠加同一份边界 patch,不复制漂移);本机 ~/.dsh 同步重装
+- 测试:desktop 28(+5:工厂真实姿势保序/实例缓存/空间切换/坏YAML拒绝×2);端到端:沙箱隔离下全链路正常(检索→查指标→证据→done)
