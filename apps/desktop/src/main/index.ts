@@ -63,12 +63,18 @@ function idaasAuthOf(ws: LoadedWorkspace | null): IdaasAuth | null {
     {
       fetchFn: fetch,
       writeFileAtomic: async (path, content) => {
-        const { rename, writeFile: wf, chmod, mkdir } = await import("node:fs/promises");
-        const abs = path.startsWith("auth/") ? join(USER_DATA, path) : path;
+        const { rename, writeFile: wf, chmod, mkdir, unlink } = await import("node:fs/promises");
+        const abs = path.startsWith("auth/") ? join(AUTH_CACHE_DIR, path) : path;
         const tmp = `${abs}.tmp`;
         await mkdir(dirname(abs), { recursive: true }).catch(() => undefined);
         await wf(tmp, content, "utf-8");
-        await rename(tmp, abs).catch(() => undefined);
+        // P0-05: rename 失败必须抛错 + 清理 tmp(不能静默吞掉)
+        try {
+          await rename(tmp, abs);
+        } catch (e) {
+          await unlink(tmp).catch(() => undefined);
+          throw new Error(`token 写入失败: ${e instanceof Error ? e.message : String(e)}`);
+        }
         await chmod(abs, 0o600).catch(() => undefined);
       },
       readFile: async () => readFile(tokenFile, "utf-8"),

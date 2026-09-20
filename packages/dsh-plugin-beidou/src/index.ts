@@ -42,23 +42,20 @@ export function apply(ctx: Context) {
     dataSource: built.toolContextOverrides.dataSource,
   };
 
-  // P0-5:从缓存 token 获取身份注入 ToolContext
+  // P0-01 修复:真正读取 token 缓存文件(而非抛 "no cache")
   try {
-    const auth = (await import("@beidou-core/auth/idaas")).createIdaasAuth(
-      { serviceUrl: "https://idaas-auth-service.example.com", appId: process.env.BEIDOU_IDAAS_APP_ID ?? "beidou-desktop" },
-      {
-        fetchFn: fetch,
-        writeFileAtomic: async () => {},
-        readFile: async () => { throw new Error("no cache"); },
-        sleep: async () => {},
-        now: () => new Date(),
-      },
-    );
-    const tokenR = await auth.cachedToken("owner");
-    if (tokenR.ok) {
-      toolCtx.identity = { username: tokenR.value.user_name ?? "owner", source: "idaas-token" };
+    const { join: j } = await import("node:path");
+    const { homedir: hd } = await import("node:os");
+    const { readFile: rf } = await import("node:fs/promises");
+    const appId = process.env.BEIDOU_IDAAS_APP_ID ?? "beidou-desktop";
+    const tokenFile = j(hd(), ".beidou", "auth", "apps", appId, "users", "owner.json");
+    const raw = await rf(tokenFile, "utf-8");
+    const parsed = JSON.parse(raw) as { user_name?: string; expires_at?: string };
+    // 简单过期检查(详细校验由 beidou_auth_status 工具做)
+    if (parsed.expires_at && new Date(parsed.expires_at).getTime() > Date.now() - 5 * 60_000) {
+      toolCtx.identity = { username: parsed.user_name ?? "owner", source: "idaas-token" };
     }
-  } catch { /* 未登录 = 无身份 */ }
+  } catch { /* 未登录/无缓存 = 无身份,正常 */ }
 
   registerBusinessTools(ctx, toolCtx);
   registerIdentityTools(ctx); // Phase 4:身份工具 ×2

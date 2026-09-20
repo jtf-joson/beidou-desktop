@@ -72,10 +72,13 @@ export function parseMembers(text: string): SpaceMembership[] {
 export function resolveRole(
   username: string | undefined,
   members: SpaceMembership[],
-  opts: { defaultRole?: string },
+  opts: { defaultRole?: string; authenticated?: boolean },
 ): Role {
+  // P0-03:未认证/匿名 = 固定 viewer;defaultRole 只给已认证用户
+  if (!username) return "viewer";
   const hit = members.find((m) => m.username === username);
   if (hit) return hit.role;
+  if (opts.authenticated === false) return "viewer";
   const d = opts.defaultRole;
   if (d && ROLES.has(d)) return d as Role;
   return "viewer";

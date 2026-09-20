@@ -247,3 +247,13 @@ Phase 4 闭环:Identity 贯穿 + AuthStore 统一 + 多 Profile 接线。
 - 升级:北斗work ⭐⭐⭐⭐(core 零依赖)vs dsh-desktop ⭐(23 个 patch 不可持续)
 - 工具轨迹:dsh ⭐⭐⭐⭐(内置 Trajectory)——值得北斗work 借鉴
 - 会话管理:dsh ⭐⭐⭐⭐(checkpoint/resume/fork)——北斗work 需补
+
+## 0.15.0(2026-09-20)
+
+第四轮外部 review(GitHub main@459f846)P0 四项代码级 bug 修复。
+
+- **P0-01** DSH 身份注入:真正读取 ~/.beidou/auth token 文件(此前 readFile 固定抛 "no cache" 致 identity 永远不生效)
+- **P0-03** resolveRole 增加 authenticated 标志;未认证 → 固定 viewer;defaultRole 只给已认证用户(core 层修复)
+- **P0-04** idaas.ts cachedToken 非法过期时间 = 过期(fail-closed,与 identity.ts 对齐)
+- **P0-05** Desktop token 原子写 rename 失败抛错 + 清理 tmp(与 DSH 版本对齐)
+- 192 core + 12 desktop = 204 测试
