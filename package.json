@@ -1,6 +1,6 @@
 {
   "name": "beidou-work",
-  "version": "0.16.2",
+  "version": "0.16.3",
   "private": true,
   "description": "北斗work monorepo:apps/desktop(Electron 壳)+ packages(beidou-core/domain-contracts/ontology-schema/dsh-plugin-beidou)",
   "workspaces": [

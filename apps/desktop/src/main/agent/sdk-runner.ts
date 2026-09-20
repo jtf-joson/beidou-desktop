@@ -4,6 +4,25 @@
  * 注:SDK 仅发行 ESM,主进程为 CJS 打包,故用动态 import。
  */
 import type { AgentEvent } from "./service";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+/**
+ * 打包态可执行文件定位:SDK 内置的 claude 是平台原生二进制(optionalDependency
+ * @anthropic-ai/claude-agent-sdk-<platform>-<arch>,bun 编译)。打包后它位于 app.asar
+ * 内,子进程无法执行(ENOENT)——electron-builder 已 asarUnpack 到
+ * app.asar.unpacked/,此处显式把 pathToClaudeCodeExecutable 指向真实文件。
+ * dev 态返回 undefined,走 SDK 默认解析。
+ */
+function resolveClaudeExecutable(): string | undefined {
+  if (!process.resourcesPath) return undefined;
+  const pkg = `claude-agent-sdk-${process.platform}-${process.arch}`;
+  const candidates = [
+    join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@anthropic-ai", pkg, "claude"),
+    join(process.resourcesPath, "app.asar.unpacked", "node_modules", "@anthropic-ai", "claude-agent-sdk", "cli.js"),
+  ];
+  return candidates.find((p) => existsSync(p));
+}
 
 type ToolSetLike = {
   search_semantics(input: { query: string; limit?: number }): Promise<{ ok: boolean; text: string; error?: string }>;
@@ -110,6 +129,7 @@ export async function runSdkAgent(input: {
     options: {
       cwd: input.cwd,
       systemPrompt: input.systemPrompt,
+      pathToClaudeCodeExecutable: resolveClaudeExecutable(),
       env: {
         // P0-4:allowlist 而非全量 process.env(防内网凭据泄漏到 Agent SDK)
         PATH: process.env.PATH ?? "",

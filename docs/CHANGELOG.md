@@ -295,3 +295,12 @@ P0 桌面端体验三件套(会话持久化/Markdown/工具轨迹)+ P1 dsh 插�
 - **修 bug 2「第一个对话永远转圈」**:两个叠加原因——(a) SessionStore.append 并发 appendFile 在线程池乱序落盘(审核 P1-05 实证:user_message 落到占位 assistant_chunk 之后),回放时占位块清空上一轮正文,空文本气泡渲染永久 Spin;现在按会话串行写队列(提交序=落盘序)+ 回放跳过空 assistant_chunk(旧乱序文件止血)+ mock 管线不再发空占位事件(tool_call 自建气泡);(b) Spin 渲染条件收紧为「最后一个气泡且 busy 中」,历史空气泡不再显示加载态
 - DEBUG 截图钩子支持 DDAW_PAGE=settings(侧栏按钮加 data-page)
 - 测试:core 208(+2:并发保序/空块不清空正文)+ 桌面 23(+5:model-config 读写合并/token 优先级)
+
+## 0.16.3(2026-09-20)
+
+安装版配置 key 后对话报错修复(打包态 Agent SDK 可执行文件定位)。
+
+- **根因**:Claude Agent SDK 拉起平台原生二进制(optionalDependency `@anthropic-ai/claude-agent-sdk-darwin-arm64/claude`,214MB bun 编译)作为子进程;打包后位于 app.asar 归档内,子进程无法执行归档内文件(ENOENT)→ `error_ai_sdk_error`。测试连接走主进程 fetch 不经此路径,故能成功
+- **修复**:electron-builder asarUnpack 解出 SDK 平台包为真实文件;sdk-runner 打包态经 `pathToClaudeCodeExecutable`(SDK 官方选项)显式指向 `app.asar.unpacked/.../claude`,dev 态回退 SDK 默认解析
+- **验证**:DEBUG 钩子新增 `DDAW_SEND="问题"`(主进程端到端直跑一轮,事件流打日志);打包产物实测:真实 DeepSeek 调用 → search_semantics 工具 → 语义感知回答 → evidence → done 全链路成功
+- 注意:安装后目录因解出的原生引擎增大约 214MB(dmg 压缩后体积基本不变)

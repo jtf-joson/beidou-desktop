@@ -813,10 +813,27 @@ app?.whenReady?.().then(async () => {
   }
   registerIpc();
   await bootstrapSpaces();
-  // DEBUG-SCREENSHOT:仅手动验证 UI(DDAW_SCREENSHOT=1 npx electron .)
-  if (process.env.DDAW_SCREENSHOT) {
+  // DEBUG-SCREENSHOT / DEBUG-SEND:仅手动验证(DDAW_SCREENSHOT=1 截图;DDAW_SEND="问题" 端到端跑一轮)
+  if (process.env.DDAW_SCREENSHOT || process.env.DDAW_SEND) {
     setTimeout(async () => {
       try {
+        if (process.env.DDAW_SEND) {
+          // 端到端验证:主进程直跑一轮问答(RBAC 旁路,仅调试),事件流打日志
+          const sid = `ddaw-probe-${Date.now()}`;
+          if (!agentService) {
+            console.log("[ddaw-send] no agentService");
+          } else {
+            try {
+              await agentService.ask(sid, process.env.DDAW_SEND, (ev) =>
+                console.log("[ddaw-send]", ev.type, JSON.stringify(ev).slice(0, 300)),
+              );
+              console.log("[ddaw-send] FINISHED ok");
+            } catch (e) {
+              console.log("[ddaw-send] THREW:", e instanceof Error ? e.message : String(e));
+            }
+          }
+        }
+        if (!process.env.DDAW_SCREENSHOT) return;
         if (process.env.DDAW_THEME) {
           await mainWindow!.webContents.executeJavaScript(`localStorage.setItem("daw.theme", ${JSON.stringify(process.env.DDAW_THEME)}); true`);
           await mainWindow!.webContents.reload();
