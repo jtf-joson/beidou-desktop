@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Card, Descriptions, Alert, List, Typography, Tabs, Input, Button, message } from "antd";
+import { Card, Descriptions, Alert, List, Typography, Tabs, Input, Button, message, Space, Tag } from "antd";
 
 interface WsState {
   ok: boolean;
@@ -99,6 +99,11 @@ export default function SettingsPage({ ws, onRefresh }: { ws: WsState | null; on
             ),
           },
           {
+            key: "model",
+            label: "模型",
+            children: <ModelTab ws={ws} onRefresh={onRefresh} />,
+          },
+          {
             key: "import",
             label: "语义资产导入",
             children: (
@@ -113,5 +118,96 @@ export default function SettingsPage({ ws, onRefresh }: { ws: WsState | null; on
         ]}
       />
     </Card>
+  );
+}
+
+/** 模型配置(dsh-desktop 式):结构化表单,密钥只写不读 */
+function ModelTab({ ws, onRefresh }: { ws: WsState | null; onRefresh: () => void }) {
+  const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com/anthropic");
+  const [model, setModel] = useState("deepseek-chat");
+  const [apiKey, setApiKey] = useState("");
+  const [state, setState] = useState<{ keyConfigured?: boolean; keySource?: "auth_token" | "env" | "none"; envVar?: string | null }>({});
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message?: string } | null>(null);
+  const isAdmin = ws?.role === "admin";
+
+  useEffect(() => {
+    void window.daw.modelRead().then((r) => {
+      if (!r.ok) return;
+      setBaseUrl(r.baseUrl ?? "https://api.deepseek.com/anthropic");
+      setModel(r.model ?? "deepseek-chat");
+      setState({ keyConfigured: r.keyConfigured, keySource: r.keySource, envVar: r.envVar });
+    });
+  }, [ws?.dir]);
+
+  const save = async () => {
+    setSaving(true);
+    const r = await window.daw.modelSave({ baseUrl, model, apiKey });
+    setSaving(false);
+    if (r.ok) {
+      message.success("模型配置已保存,即时生效");
+      setApiKey("");
+      const rd = await window.daw.modelRead();
+      setState({ keyConfigured: rd.keyConfigured, keySource: rd.keySource, envVar: rd.envVar });
+      onRefresh();
+    } else {
+      message.error(r.error ?? "保存失败");
+    }
+  };
+
+  const test = async () => {
+    setTesting(true);
+    const r = await window.daw.modelTest();
+    setTesting(false);
+    setTestResult(r);
+  };
+
+  return (
+    <>
+      <Alert
+        type={state.keyConfigured ? "success" : "warning"}
+        showIcon
+        style={{ marginBottom: 12 }}
+        message={
+          state.keyConfigured
+            ? `API Key 已配置(${state.keySource === "auth_token" ? "保存于本空间 config.yaml" : `经环境变量 ${state.envVar}`})`
+            : "未配置 API Key——当前为演示模式,回答由固定管线生成"
+        }
+      />
+      <div style={{ display: "grid", gap: 10, maxWidth: 560 }}>
+        <label style={{ fontSize: 12 }}>
+          Base URL(Anthropic 兼容端点)
+          <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} disabled={!isAdmin} style={{ marginTop: 4 }} placeholder="https://api.deepseek.com/anthropic" />
+        </label>
+        <label style={{ fontSize: 12 }}>
+          模型名
+          <Input value={model} onChange={(e) => setModel(e.target.value)} disabled={!isAdmin} style={{ marginTop: 4 }} placeholder="deepseek-chat" />
+        </label>
+        <label style={{ fontSize: 12 }}>
+          API Key
+          <Input.Password
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            disabled={!isAdmin}
+            style={{ marginTop: 4 }}
+            placeholder={state.keyConfigured ? "已配置——留空保持不变,输入则替换" : "sk-..."}
+          />
+        </label>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
+          Key 只写不读:保存到本空间 config.yaml 的 model.auth_token(优先于环境变量),不进 Git。
+          安装版从 Finder/Dock 启动时读不到 shell 环境变量,推荐直接在此填 Key。
+        </Typography.Paragraph>
+        <Space>
+          <Button type="primary" disabled={!isAdmin} loading={saving} onClick={save}>保存配置</Button>
+          <Button loading={testing} onClick={test}>测试连接</Button>
+          {testResult && (
+            <Tag color={testResult.ok ? "success" : "error"} style={{ fontSize: 12 }}>
+              {testResult.message}
+            </Tag>
+          )}
+        </Space>
+      </div>
+    </>
   );
 }

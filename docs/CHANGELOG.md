@@ -285,3 +285,13 @@ P0 桌面端体验三件套(会话持久化/Markdown/工具轨迹)+ P1 dsh 插�
 - **P0-08 cachedToken 非法/缺失 expires_at fail-open(core)**:0.15.0 声称修过但实际仍 `NaN→未过期`;现在缺失/无法解析/距过期不足 5 分钟一律视为过期(fail-closed),插件动态身份与桌面端 auth:state 同享该修复
 - **P0-06 主窗口导航边界(桌面端)**:setWindowOpenHandler 一律 deny + 仅 http(s) 经 shell.openExternal 放行(file:/javascript:/自定义 scheme 全拒);will-navigate 只允许应用自身 origin(dev server/打包产物),其余 prevent;禁 webview;index.html 加 CSP(script/img/font 限 self,外链图片随之失效;ws 仅限 localhost dev HMR),顺手把标题从 DataAgent Workbench 改为 北斗work
 - 测试:core 206(+3:非法/缺失/刷新窗口过期)+ 插件 24(+9:动态身份 null 覆盖快照/同会话身份变化即时生效/Result 分支/provider 映射)+ 桌面 18(+6:掩码还原);类型检查零错误;插件 dist 重打包;Electron 真机冒烟(深色主题截图验证 CSP/导航改动无回归)
+
+## 0.16.2(2026-09-20)
+
+安装版实测两 bug 修复 + 模型配置菜单(对齐 dsh-desktop)。
+
+- **模型配置菜单(设置 → 模型)**:结构化表单(Base URL / 模型名 / API Key 只写不读)+「测试连接」(Anthropic 协议 /v1/messages max_tokens=1 探活,区分 key 无效/端点错/超时);model-config.ts 结构化读写 config.yaml model 段(留空=保持现有 key,不走 `***` 掩码回写);model:save 后重建 AgentService 即时生效;key 优先级 auth_token > 环境变量
+- **修 bug 1「问什么都固定回答」**:根因=安装版(Finder/Dock 启动)读不到 shell export 的 DEEPSEEK_API_KEY → modelConfigured=false 走 mock 演示管线;现在设置页直接填 key 即可,彻底摆脱 GUI 环境变量限制;对话页未配置时显示显式警告横幅(演示模式说明 + 跳设置入口)
+- **修 bug 2「第一个对话永远转圈」**:两个叠加原因——(a) SessionStore.append 并发 appendFile 在线程池乱序落盘(审核 P1-05 实证:user_message 落到占位 assistant_chunk 之后),回放时占位块清空上一轮正文,空文本气泡渲染永久 Spin;现在按会话串行写队列(提交序=落盘序)+ 回放跳过空 assistant_chunk(旧乱序文件止血)+ mock 管线不再发空占位事件(tool_call 自建气泡);(b) Spin 渲染条件收紧为「最后一个气泡且 busy 中」,历史空气泡不再显示加载态
+- DEBUG 截图钩子支持 DDAW_PAGE=settings(侧栏按钮加 data-page)
+- 测试:core 208(+2:并发保序/空块不清空正文)+ 桌面 23(+5:model-config 读写合并/token 优先级)

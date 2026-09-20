@@ -1,7 +1,7 @@
 {
   "name": "@beidou/desktop",
   "productName": "北斗work",
-  "version": "0.16.1",
+  "version": "0.16.2",
   "description": "北斗work —— 数据智能体工作台(仿 DataBuddy:语义配置 + 技能插件 + 智能问数/下钻/明细分析)",
   "main": "out/main/index.js",
   "private": true,

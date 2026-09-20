@@ -32,6 +32,10 @@ export function assertSafeSessionId(sessionId: string): void {
 }
 
 export class SessionStore {
+  /** 每会话一条串行写队列:appendFile 并发提交会在线程池乱序落盘(实测会把
+   user_message 写到占位 assistant_chunk 之后,回放时清空上一轮正文) */
+  private readonly writeQueues = new Map<string, Promise<void>>();
+
   constructor(private readonly sessionsDir: string) {}
 
   private sessionFile(sessionId: string): string {
@@ -47,8 +51,22 @@ export class SessionStore {
 
   async append(event: SessionEvent): Promise<void> {
     assertSafeSessionId(event.sessionId);
-    await this.ensureDir();
-    await appendFile(this.sessionFile(event.sessionId), JSON.stringify(event) + "\n", "utf-8");
+    const file = this.sessionFile(event.sessionId);
+    const line = JSON.stringify(event) + "\n";
+    const prev = this.writeQueues.get(event.sessionId) ?? Promise.resolve();
+    const next = prev
+      .catch(() => undefined) // 前一次失败不断链(错误已由各调用方记录)
+      .then(async () => {
+        await this.ensureDir();
+        await appendFile(file, line, "utf-8");
+      });
+    this.writeQueues.set(event.sessionId, next);
+    try {
+      await next;
+    } finally {
+      // 队列尾部且无后续写入时清理,防内存增长
+      if (this.writeQueues.get(event.sessionId) === next) this.writeQueues.delete(event.sessionId);
+    }
   }
 
   /** 逐行回读;单行损坏(手改/断电截断)跳过该行,不整体失败 */

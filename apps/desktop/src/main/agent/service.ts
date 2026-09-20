@@ -135,7 +135,8 @@ export class AgentService {
     }
 
     // ---- mock 策略:确定性管线 ----
-    onEvent({ type: "assistant", text: "" }); // 占位,UI 先建立气泡
+    // 注:不发空 assistant 占位事件——tool_call 的 ensureAssistant 自会建气泡;
+    // 空占位块一旦在落盘/回放中乱序到下一轮,会把上一轮正文清空成永久 Spin。
     const answer = await runMockPipeline(wrapped, userMessage, onEvent);
     onEvent({ type: "assistant", text: answer });
     onEvent({ type: "evidence", items: this.evidenceOf(sessionId) });

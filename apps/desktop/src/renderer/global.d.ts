@@ -10,6 +10,9 @@ interface DawApi {
   readConfig(): Promise<{ ok: boolean; text?: string }>;
   saveConfig(text: string): Promise<{ ok: boolean }>;
   testConfig(): Promise<{ ok: boolean; results: Record<string, unknown> }>;
+  modelRead(): Promise<{ ok: boolean; provider?: string; baseUrl?: string; model?: string; keyConfigured?: boolean; keySource?: "auth_token" | "env" | "none"; envVar?: string | null }>;
+  modelSave(patch: { baseUrl?: string; model?: string; apiKey?: string }): Promise<{ ok: boolean; error?: string }>;
+  modelTest(): Promise<{ ok: boolean; message?: string }>;
   whoami(): Promise<{ identity: unknown }>;
   authState(): Promise<Record<string, unknown>>;
   authLogin(): Promise<{ ok: boolean; error?: string; loginUrl?: string; userName?: string }>;

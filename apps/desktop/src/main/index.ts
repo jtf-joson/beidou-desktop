@@ -15,6 +15,7 @@ import { bubblesToEvents, agentEventToSessionEvent } from "@beidou/core/src/sess
 import { redactSecrets } from "@beidou/core/src/evidence/pack";
 import { identityFromEptSession, isExpired, type Identity } from "@beidou/core/src/identity/identity";
 import { restoreMaskedSecrets } from "./config-merge";
+import { readModelSection, mergeModelSection, resolveModelToken, testModelEndpoint } from "./model-config";
 import { createIdaasAuth, type IdaasTokenFile, type IdaasAuth } from "@beidou/core/src/auth/idaas";
 import { DEFAULT_POLICY, can, menusFor, resolveRole, type Role } from "@beidou/core/src/rbac/rbac";
 import {
@@ -659,6 +660,51 @@ function registerIpc(): void {
     return { ok: true };
   });
 
+  // ---- 模型配置菜单(dsh-desktop 式):结构化读写,不走掩码回写 ----
+  const modelSection = async (): Promise<{ raw: string; m: ReturnType<typeof readModelSection> }> => {
+    let raw = "";
+    try {
+      raw = workspace ? await readFile(join(workspace.dir, "config.yaml"), "utf-8") : "";
+    } catch { /* 无配置文件 */ }
+    return { raw, m: readModelSection(raw) };
+  };
+
+  ipcMain.handle("model:read", async () => {
+    const { m } = await modelSection();
+    const token = resolveModelToken(m);
+    return {
+      ok: true,
+      provider: m.provider ?? "deepseek-anthropic",
+      baseUrl: m.base_url ?? "https://api.deepseek.com/anthropic",
+      model: m.model ?? "deepseek-chat",
+      keyConfigured: Boolean(token),
+      keySource: m.auth_token ? ("auth_token" as const) : m.auth_token_env ? ("env" as const) : ("none" as const),
+      envVar: m.auth_token_env ?? null,
+    };
+  });
+
+  ipcMain.handle("model:save", async (_e, patch: { baseUrl?: string; model?: string; apiKey?: string }) => {
+    if (!can(currentRole(), "config:save", DEFAULT_POLICY)) {
+      return { ok: false, error: "当前角色无配置权限" };
+    }
+    if (!workspace) return { ok: false, error: "no workspace" };
+    const configPath = join(workspace.dir, "config.yaml");
+    let raw = "";
+    try {
+      raw = await readFile(configPath, "utf-8");
+    } catch { /* 首次保存 */ }
+    await writeFile(configPath, mergeModelSection(raw, patch), "utf-8");
+    await activateSpace(activeSpace(registry)!); // 重建 AgentService,配置即时生效
+    return { ok: true };
+  });
+
+  ipcMain.handle("model:test", async () => {
+    const { m } = await modelSection();
+    const token = resolveModelToken(m);
+    if (!token) return { ok: false, message: "未配置 API Key(设置页填入后测试)" };
+    return testModelEndpoint(m.base_url ?? "https://api.deepseek.com/anthropic", token, m.model ?? "deepseek-chat");
+  });
+
   ipcMain.handle("config:test", async () => {
     if (!workspace) return { ok: false };
     const sr = workspace.config.starrocks;
@@ -778,6 +824,13 @@ app?.whenReady?.().then(async () => {
         }
         const topbar = await mainWindow!.webContents.executeJavaScript(`document.querySelector(".daw-topbar")?.innerText ?? "(no topbar)"`);
         console.log("[topbar]", topbar);
+        if (process.env.DDAW_PAGE) {
+          // DEBUG 页面导航:点击侧栏按钮后再截图(验证非默认页)
+          await mainWindow!.webContents.executeJavaScript(
+            `document.querySelector('.daw-rail-btn[data-page=${JSON.stringify(process.env.DDAW_PAGE)}]')?.click(); true`,
+          );
+          await new Promise((r) => setTimeout(r, 1500));
+        }
         const img = await mainWindow!.webContents.capturePage();
         const { writeFile: wf } = await import("node:fs/promises");
         await wf(process.env.DDAW_SCREENSHOT!, img.toPNG());

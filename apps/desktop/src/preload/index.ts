@@ -10,6 +10,11 @@ const api = {
   readConfig: (): Promise<{ ok: boolean; text?: string }> => ipcRenderer.invoke("config:read"),
   saveConfig: (text: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("config:save", text),
   testConfig: (): Promise<{ ok: boolean; results: Record<string, unknown> }> => ipcRenderer.invoke("config:test"),
+  modelRead: (): Promise<{ ok: boolean; provider?: string; baseUrl?: string; model?: string; keyConfigured?: boolean; keySource?: "auth_token" | "env" | "none"; envVar?: string | null }> =>
+    ipcRenderer.invoke("model:read"),
+  modelSave: (patch: { baseUrl?: string; model?: string; apiKey?: string }): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("model:save", patch),
+  modelTest: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke("model:test"),
   whoami: (): Promise<{ identity: unknown }> => ipcRenderer.invoke("identity:whoami"),
   authState: (): Promise<Record<string, unknown>> => ipcRenderer.invoke("auth:state"),
   authLogin: (): Promise<{ ok: boolean; error?: string; loginUrl?: string; userName?: string }> =>

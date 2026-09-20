@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Collapse, Empty, Spin, message } from "antd";
+import { Alert, Button, Collapse, Empty, Spin, message } from "antd";
 import { SendOutlined, ExportOutlined, PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
@@ -83,7 +83,7 @@ const Trajectory = ({ tools }: { tools: ToolStep[] }) => {
   );
 };
 
-export default function ChatPage({ theme }: { theme?: boolean }) {
+export default function ChatPage({ theme, modelConfigured, onGoSettings }: { theme?: boolean; modelConfigured?: boolean; onGoSettings?: () => void }) {
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastTs: string; messageCount: number }>>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [events, setEvents] = useState<SessionEvent[]>([]);
@@ -273,7 +273,11 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
                     <span className="daw-ai-name">北斗work</span>
                   </div>
                   <div className="daw-ai-body">
-                    {b.text ? <Md text={b.text} /> : <Spin size="small" />}
+                    {b.text ? (
+                      <Md text={b.text} />
+                    ) : busy && i === bubbles.length - 1 ? (
+                      <Spin size="small" />
+                    ) : null}
                     {b.error ? <div className="daw-ai-error">{b.error}</div> : null}
                   </div>
                   {b.tools && b.tools.length > 0 ? <Trajectory tools={b.tools} /> : null}
@@ -286,6 +290,21 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
 
         {/* 输入区 */}
         <div className="daw-inputbar">
+          {modelConfigured === false && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ margin: "0 0 8px", padding: "6px 12px", fontSize: 12 }}
+              message={
+                <>
+                  演示模式:未配置模型 API Key,回答由固定管线生成。
+                  {onGoSettings ? (
+                    <a onClick={onGoSettings} style={{ marginLeft: 8 }}>前往 设置 → 模型 配置 →</a>
+                  ) : null}
+                </>
+              }
+            />
+          )}
           <div className="daw-inputbar-inner">
             <div className="daw-input-card">
               <textarea

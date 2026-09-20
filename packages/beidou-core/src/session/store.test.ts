@@ -147,3 +147,34 @@ describe("bubblesToEvents(localStorage 迁移)", () => {
     expect(list.find((x) => x.id === "mig2")?.title).toBe("旧会话问题");
   });
 });
+
+describe("审核第二批修复回归(用户实测触发的两个 bug)", () => {
+  it("并发 append 不乱序:同一会话连发 30 个事件,落盘顺序=提交顺序", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "daw-store-order-"));
+    const store = new SessionStore(dir);
+    const sid = "s-order";
+    const jobs: Array<Promise<void>> = [];
+    for (let i = 0; i < 30; i++) {
+      jobs.push(store.append({ ts: new Date(Date.now() + i).toISOString(), sessionId: sid, type: i % 2 === 0 ? "user_message" : "assistant_chunk", data: `m${i}` }));
+    }
+    await Promise.all(jobs);
+    const events = await store.read(sid);
+    expect(events.map((e) => String(e.data))).toEqual(Array.from({ length: 30 }, (_, i) => `m${i}`));
+  });
+
+  it("回放跳过空 assistant_chunk:乱序占位块不再清空已有正文(永久 Spin 根因)", () => {
+    const sid = "s-replay";
+    const events: SessionEvent[] = [
+      { ts: "t1", sessionId: sid, type: "user_message", data: "第一问" },
+      { ts: "t2", sessionId: sid, type: "assistant_chunk", data: "第一轮回答" },
+      // 第二轮占位块因历史乱序落在这里:
+      { ts: "t3", sessionId: sid, type: "assistant_chunk", data: "" },
+      { ts: "t4", sessionId: sid, type: "user_message", data: "第二问" },
+      { ts: "t5", sessionId: sid, type: "assistant_chunk", data: "第二轮回答" },
+    ];
+    const bubbles = replayEvents(events);
+    expect(bubbles).toHaveLength(4); // user/answer/user/answer
+    expect(bubbles[1]!.text).toBe("第一轮回答"); // 不被空块清空
+    expect(bubbles[3]!.text).toBe("第二轮回答");
+  });
+});

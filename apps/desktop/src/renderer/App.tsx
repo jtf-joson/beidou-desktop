@@ -158,6 +158,7 @@ export default function App() {
             <Tooltip key={key} title={m.title} placement="right">
               <button
                 className={`daw-rail-btn${page === key ? " active" : ""}`}
+                data-page={key}
                 onClick={() => setPage(key)}
               >
                 {m.icon}
@@ -212,7 +213,7 @@ export default function App() {
             </div>
           )}
 
-          {page === "chat" && <ChatPage theme={dark} />}
+          {page === "chat" && <ChatPage theme={dark} modelConfigured={ws?.modelConfigured} onGoSettings={() => setPage("settings")} />}
           {page === "semantics" && <div className="daw-page"><SemanticsPage role={ws?.role} /></div>}
           {page === "skills" && <div className="daw-page"><SkillsPage role={ws?.role} /></div>}
           {page === "plugins" && <div className="daw-page"><PluginsPage onSaved={refresh} /></div>}

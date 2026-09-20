@@ -44,6 +44,8 @@ export function replayEvents(events: SessionEvent[]): ReplayBubble[] {
     if (e.type === "user_message") {
       bubbles.push({ role: "user", text: String(e.data) });
     } else if (e.type === "assistant_chunk") {
+      // 空占位块跳过:历史文件曾因并发落盘乱序,占位块落到下一轮会清空已有正文
+      if (String(e.data) === "") continue;
       const b = ensureAssistant();
       b.text = String(e.data);
     } else if (e.type === "tool_call") {
