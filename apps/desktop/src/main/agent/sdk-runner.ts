@@ -4,8 +4,22 @@
  * 注:SDK 仅发行 ESM,主进程为 CJS 打包,故用动态 import。
  */
 import type { AgentEvent } from "./service";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+/**
+ * 模型可用工具的硬边界(Claude Agent SDK 路径,过渡期方案;终态迁移 DSH 后随 SDK 一并删除)。
+ * SDK 自带 Bash/Read/Write 等内置工具,若不禁用,模型可越过 MCP 数据工具直读工作区
+ * (实测:曾 Read 到含模型 key 的 config.yaml)。allowedTools 只是"预批准",不裁剪 schema;
+ * 必须 disallowedTools 显式禁用 + cwd 指向空沙箱目录,双保险。
+ */
+const DISALLOWED_BUILTIN_TOOLS = [
+  "Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep",
+  "WebFetch", "WebSearch", "Task", "Agent", "Subagent",
+  "Skill", "TodoWrite", "NotebookEdit", "AskUserQuestion",
+  "BashOutput", "KillShell", "ListMcpResources",
+];
 
 /**
  * 打包态可执行文件定位:SDK 内置的 claude 是平台原生二进制(optionalDependency
@@ -24,6 +38,11 @@ function resolveClaudeExecutable(): string | undefined {
   return candidates.find((p) => existsSync(p));
 }
 
+/** 空 cwd:不给文件类工具任何可读的业务内容(workspace 含 config.yaml 与会话记录) */
+function makeSandboxCwd(): string {
+  return mkdtempSync(join(tmpdir(), "beidou-agent-"));
+}
+
 type ToolSetLike = {
   search_semantics(input: { query: string; limit?: number }): Promise<{ ok: boolean; text: string; error?: string }>;
   query_metrics(input: { metricName: string; dims?: string[]; timeRange?: { start: string; end: string } }): Promise<{ ok: boolean; text: string; error?: string }>;
@@ -32,6 +51,7 @@ type ToolSetLike = {
   diagnose_metric(input: Record<string, unknown>): Promise<{ ok: boolean; text: string; error?: string }>;
   search_knowledge(input: { query: string }): Promise<{ ok: boolean; text: string; error?: string }>;
   read_playbook(input: { name: string }): Promise<{ ok: boolean; text: string; error?: string }>;
+  list_ontology(input: { subdomain?: string }): Promise<{ ok: boolean; text: string; error?: string }>;
 };
 
 const asCallTool = (r: { ok: boolean; text: string; error?: string }) => ({
@@ -42,7 +62,6 @@ const asCallTool = (r: { ok: boolean; text: string; error?: string }) => ({
 export async function runSdkAgent(input: {
   systemPrompt: string;
   userMessage: string;
-  cwd: string;
   env: Record<string, string>;
   toolSet: ToolSetLike;
   onEvent: (e: AgentEvent) => void;
@@ -121,14 +140,21 @@ export async function runSdkAgent(input: {
         { questions: z.array(z.string()).min(1) },
         async (args) => asCallTool(await t.clarify({ questions: args.questions })),
       ),
+      tool(
+        "list_ontology",
+        "本体导航:按子域列出 class(属性/指标/表指针)、action(诊断入口)结构;subdomain 省略返回全部。",
+        { subdomain: z.string().optional() },
+        async (args) => asCallTool(await t.list_ontology(args)),
+      ),
     ],
   });
 
   const q = query({
     prompt: input.userMessage,
     options: {
-      cwd: input.cwd,
+      cwd: makeSandboxCwd(), // 空沙箱目录(不再用 workspace——含 key 与会话记录)
       systemPrompt: input.systemPrompt,
+      disallowedTools: DISALLOWED_BUILTIN_TOOLS,
       pathToClaudeCodeExecutable: resolveClaudeExecutable(),
       env: {
         // P0-4:allowlist 而非全量 process.env(防内网凭据泄漏到 Agent SDK)
@@ -143,7 +169,7 @@ export async function runSdkAgent(input: {
         "mcp__data-workbench__search_semantics", "mcp__data-workbench__query_metrics",
         "mcp__data-workbench__query_dataset", "mcp__data-workbench__clarify",
         "mcp__data-workbench__diagnose_metric", "mcp__data-workbench__search_knowledge",
-        "mcp__data-workbench__read_playbook",
+        "mcp__data-workbench__read_playbook", "mcp__data-workbench__list_ontology",
       ],
       maxTurns: 30,
       settingSources: [],

@@ -28,7 +28,6 @@ export interface AgentDeps {
   runSdkAgent?: (input: {
     systemPrompt: string;
     userMessage: string;
-    cwd: string;
     env: Record<string, string>;
     toolSet: ToolSetLike;
     onEvent: (e: AgentEvent) => void;
@@ -123,7 +122,6 @@ export class AgentService {
           playbookNames: w.playbooks.map((p) => p.name),
         }),
         userMessage,
-        cwd: w.dir,
         env,
         toolSet: wrapped,
         onEvent,

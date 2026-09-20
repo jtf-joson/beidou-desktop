@@ -1,0 +1,58 @@
+# 北斗work 专用 DSH profile(Phase A 工具边界验证)。
+#
+# 组成:dsh-base + dsh-web-app(web 对话 UI),经本层把 dsh-base 挂载的全部内置
+# 执行工具按行 id 逐一禁用(loader 语义:按 id 重述整行,disabled=true 即不启动),
+# 并插入 beidou-work 插件——模型可见工具面 = 仅北斗业务工具 + 身份工具。
+#
+# 注意:
+# - 插件路径需为本机绝对路径(dist 产物;esbuild 已 external @deepseek-ai/*,
+#   运行时由 profile node_modules 提供,避免双份 dsh-tools 符号冲突);
+# - 行 id 对照 dsh-base/cordis.patch.yml,DSH 升级后需复核清单;
+# - 沙箱/文件系统基础设施行(sandbox/fs-sandbox/shell-env)暂保留未禁
+#   (工具已禁则不可达;Phase A spike 实测后决定是否一并下线)。
+- insert:
+    - id: beidou-work
+      name: '__BEIDOU_PLUGIN_ENTRY__'
+
+    - id: tool-bash
+      name: '@deepseek-ai/dsh-tool-bash'
+      disabled: true
+    - id: tool-pwsh
+      name: '@deepseek-ai/dsh-tool-pwsh'
+      disabled: true
+    - id: tool-jobs
+      name: '@deepseek-ai/dsh-tool-jobs'
+      disabled: true
+    - id: tool-fs
+      name: '@deepseek-ai/dsh-tool-fs'
+      disabled: true
+    - id: tool-fs-search
+      name: '@deepseek-ai/dsh-tool-fs-search'
+      disabled: true
+    - id: tool-skill
+      name: '@deepseek-ai/dsh-tool-skill'
+      disabled: true
+    - id: tool-subagent-control
+      name: '@deepseek-ai/dsh-tool-subagent-control'
+      disabled: true
+    - id: tool-subagent
+      name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: true
+    - id: tool-subagent-fork
+      name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: true
+    - id: tool-workflow
+      name: '@deepseek-ai/dsh-tool-workflow'
+      disabled: true
+    - id: tool-todo
+      name: '@deepseek-ai/dsh-tool-todo'
+      disabled: true
+    - id: tool-goal
+      name: '@deepseek-ai/dsh-tool-goal'
+      disabled: true
+    - id: tool-ralph
+      name: '@deepseek-ai/dsh-tool-ralph'
+      disabled: true
+    - id: tool-web
+      name: '@deepseek-ai/dsh-tool-web'
+      disabled: true
