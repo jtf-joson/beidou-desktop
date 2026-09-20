@@ -10,6 +10,8 @@ import { queryStarRocks } from "@beidou/core/src/services/starrocks";
 import { createMockStarRocks } from "@beidou/core/src/services/mock-starrocks";
 import { mysqlConnector } from "./starrocks-connector";
 import { createAuditLog } from "@beidou/core/src/audit/log";
+import { SessionStore } from "@beidou/core/src/session/store";
+import { bubblesToEvents, agentEventToSessionEvent } from "@beidou/core/src/session/replay";
 import { redactSecrets } from "@beidou/core/src/evidence/pack";
 import { identityFromEptSession, isExpired, type Identity } from "@beidou/core/src/identity/identity";
 import { createIdaasAuth, type IdaasTokenFile, type IdaasAuth } from "@beidou/core/src/auth/idaas";
@@ -570,6 +572,24 @@ function registerIpc(): void {
     return { ok: true };
   });
 
+  // ---- 会话持久化(JSONL 追加式,文件即权威源;恢复=回放) ----
+  // 惰性取路径:registerIpc 早于 bootstrapSpaces,构造时 workspace 尚未激活;
+  // 且会话按空间隔离,必须跟随当前激活空间。
+  const sessionStore = () => new SessionStore(join(workspace?.dir ?? USER_DATA, "sessions"));
+
+  ipcMain.handle("session:list", async () => await sessionStore().list());
+  ipcMain.handle("session:read", async (_e, sessionId: string) => await sessionStore().read(sessionId));
+  ipcMain.handle("session:delete", async (_e, sessionId: string) => {
+    await sessionStore().delete(sessionId);
+    return { ok: true };
+  });
+  ipcMain.handle("session:import", async (_e, sessionId: string, bubbles: unknown) => {
+    // 一次性迁移:renderer 旧 localStorage 会话 → JSONL(bubblesToEvents 保证回放同构)
+    const events = bubblesToEvents(sessionId, bubbles as Parameters<typeof bubblesToEvents>[1]);
+    for (const ev of events) await sessionStore().append(ev);
+    return { ok: true, count: events.length };
+  });
+
   ipcMain.handle("report:export", async (_e, markdown: string) => {
     if (!workspace) return { ok: false, error: "no workspace" };
     const dir = join(workspace.dir, "reports");
@@ -662,9 +682,15 @@ function registerIpc(): void {
     const audit = workspace ? auditLogOf(workspace) : null;
     const ac = new AbortController();
     aborters.set(sessionId, ac);
+    const persist = (ev: AgentEvent): void => {
+      // 会话事件落 JSONL(权威源;失败不阻塞问答,仅记录)
+      sessionStore().append(agentEventToSessionEvent(sessionId, ev))
+        .catch((e) => console.error("[session] persist failed:", e instanceof Error ? e.message : e));
+    };
     try {
       await agentService.ask(sessionId, text, (ev: AgentEvent) => {
         send("agent:event", { sessionId, ev });
+        persist(ev);
         if (audit && (ev.type === "user" || ev.type === "tool_result" || ev.type === "assistant")) {
           void audit.append({
             ts: new Date().toISOString(),
@@ -677,7 +703,9 @@ function registerIpc(): void {
       });
       return { ok: true };
     } catch (e) {
-      send("agent:event", { sessionId, ev: { type: "error", message: e instanceof Error ? e.message : String(e) } });
+      const errEv: AgentEvent = { type: "error", message: e instanceof Error ? e.message : String(e) };
+      send("agent:event", { sessionId, ev: errEv });
+      persist(errEv);
       return { ok: false, error: String(e) };
     } finally {
       aborters.delete(sessionId);

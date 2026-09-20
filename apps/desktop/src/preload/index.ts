@@ -34,6 +34,10 @@ const api = {
   saveEntities: (text: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke("entities:save", text),
   saveSkill: (name: string, content: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke("skills:save", name, content),
   toggleSkill: (name: string, enabled: boolean): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke("skills:toggle", name, enabled),
+  sessionList: (): Promise<Array<{ id: string; title: string; lastTs: string; messageCount: number }>> => ipcRenderer.invoke("session:list"),
+  sessionRead: (id: string): Promise<Array<Record<string, unknown>>> => ipcRenderer.invoke("session:read", id),
+  sessionDelete: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("session:delete", id),
+  sessionImport: (id: string, bubbles: unknown): Promise<{ ok: boolean; count: number }> => ipcRenderer.invoke("session:import", id, bubbles),
   exportReport: (markdown: string): Promise<{ ok: boolean; file?: string; error?: string }> => ipcRenderer.invoke("report:export", markdown),
   send: (sessionId: string, text: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("agent:send", sessionId, text),

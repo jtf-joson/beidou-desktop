@@ -26,6 +26,10 @@ interface DawApi {
   saveGlossary(text: string): Promise<{ ok: boolean; error?: string }>;
   saveSkill(name: string, content: string): Promise<{ ok: boolean; error?: string }>;
   toggleSkill(name: string, enabled: boolean): Promise<{ ok: boolean; error?: string }>;
+  sessionList(): Promise<Array<{ id: string; title: string; lastTs: string; messageCount: number }>>;
+  sessionRead(id: string): Promise<Record<string, unknown>[]>;
+  sessionDelete(id: string): Promise<{ ok: boolean }>;
+  sessionImport(id: string, bubbles: unknown): Promise<{ ok: boolean; count: number }>;
   exportReport(markdown: string): Promise<{ ok: boolean; file?: string; error?: string }>;
   listKnowledge(): Promise<Array<{ name: string; content: string }>>;
   saveKnowledge(name: string, content: string): Promise<{ ok: boolean; error?: string }>;

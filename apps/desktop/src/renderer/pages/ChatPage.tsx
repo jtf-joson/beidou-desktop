@@ -1,32 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Collapse, Empty, Spin, message } from "antd";
 import { SendOutlined, ExportOutlined, PlusOutlined, DeleteOutlined } from "@ant-design/icons";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+import {
+  agentEventToSessionEvent,
+  replayEvents,
+  type SessionEvent,
+  type ToolStep,
+  type EvidenceItem as EvItem,
+  type AgentEventLike,
+} from "@beidou/core/src/session/replay";
 
-interface ToolEvent { type: "tool"; name: string; input: unknown }
-interface EvidenceItem {
-  kind: string; title: string; caliber?: string; sql?: string; rows?: number;
-  truncated?: boolean; lineage?: string[]; metricName?: string; mock?: boolean;
-}
-type AgentEvent =
-  | { type: "user"; text: string }
-  | { type: "assistant"; text: string }
-  | ToolEvent
-  | { type: "tool_result"; name: string; ok: boolean; summary: string }
-  | { type: "evidence"; items: EvidenceItem[] }
-  | { type: "done"; reason?: string }
-  | { type: "error"; message: string };
+type Bubble = ReturnType<typeof replayEvents>[number];
 
-interface Bubble {
-  role: "user" | "assistant";
-  text: string;
-  tools?: Array<{ name: string; summary?: string }>;
-  evidence?: EvidenceItem[];
-}
-
-interface ChatSession {
+/** 旧 localStorage 会话(一次性迁移到磁盘 JSONL 后弃用) */
+interface LegacySession {
   id: string;
   ts: number;
-  bubbles: Bubble[];
+  bubbles: Array<{ role: "user" | "assistant"; text: string; tools?: Array<{ name: string; summary?: string }>; evidence?: EvItem[] }>;
 }
 
 const STORE_KEY = "daw.sessions";
@@ -38,82 +30,128 @@ const SUGGESTIONS = [
   "智驾活跃相关的指标和业务模型有哪些?",
 ];
 
-const loadSessions = (): ChatSession[] => {
+const loadLegacySessions = (): LegacySession[] => {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORE_KEY) ?? "[]") as ChatSession[];
+    const raw = JSON.parse(localStorage.getItem(STORE_KEY) ?? "[]") as LegacySession[];
     return Array.isArray(raw) ? raw : [];
   } catch {
     return [];
   }
 };
 
+/* ---------- Markdown 渲染(assistant 正文;XSS:marked 输出经 DOMPurify 白名单净化) ---------- */
+const renderMd = (text: string): string =>
+  DOMPurify.sanitize(marked.parse(text, { async: false, gfm: true, breaks: true }) as string);
+
+const Md = React.memo(({ text }: { text: string }) => {
+  const html = useMemo(() => renderMd(text), [text]);
+  return <div className="daw-md" dangerouslySetInnerHTML={{ __html: html }} />;
+});
+
+/* ---------- 工具轨迹视图:逐步骤状态 + 入参展开 ---------- */
+const Trajectory = ({ tools }: { tools: ToolStep[] }) => {
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <div className="daw-traj">
+      <div className="daw-traj-head">
+        <span className="daw-traj-title">工具轨迹</span>
+        <span className="daw-traj-count">{tools.length} 步</span>
+      </div>
+      <ol className="daw-traj-list">
+        {tools.map((t, i) => {
+          // 已发出调用但没有结果 = 执行中
+          const running = t.ok === undefined && t.summary === undefined;
+          const name = t.name.replace(/^mcp__data-workbench__/, "");
+          return (
+            <li key={i} className={`daw-traj-step${t.ok === false ? " fail" : ""}${running ? " running" : ""}`}>
+              <div className="daw-traj-line" onClick={() => setOpen(open === i ? null : i)}>
+                <span className="dot" />
+                <span className="daw-traj-name">{name}</span>
+                {t.summary ? <span className="daw-traj-summary">{t.summary}</span> : null}
+                {t.input !== undefined && t.input !== null ? (
+                  <span className="daw-traj-toggle">{open === i ? "收起" : "入参"}</span>
+                ) : null}
+              </div>
+              {open === i && t.input !== undefined && t.input !== null ? (
+                <pre className="daw-traj-json">{JSON.stringify(t.input, null, 2)}</pre>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+};
+
 export default function ChatPage({ theme }: { theme?: boolean }) {
-  const [sessions, setSessions] = useState<ChatSession[]>(loadSessions);
-  const [activeId, setActiveId] = useState<string>(() => loadSessions()[0]?.id ?? `s-${Date.now()}`);
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string; lastTs: string; messageCount: number }>>([]);
+  const [activeId, setActiveId] = useState<string>("");
+  const [events, setEvents] = useState<SessionEvent[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
 
-  const active = useMemo(() => sessions.find((s) => s.id === activeId), [sessions, activeId]);
-  const bubbles = active?.bubbles ?? [];
+  const bubbles = useMemo(() => replayEvents(events), [events]);
   void theme;
 
-  const setBubbles = (fn: (prev: Bubble[]) => Bubble[]) => {
-    setSessions((prevSessions) => {
-      const cur = prevSessions.find((s) => s.id === activeId);
-      const nextBubbles = fn(cur?.bubbles ?? []);
-      if (cur) return prevSessions.map((s) => (s.id === activeId ? { ...s, bubbles: nextBubbles, ts: Date.now() } : s));
-      return [{ id: activeId, ts: Date.now(), bubbles: nextBubbles }, ...prevSessions];
-    });
+  const refreshSessions = async () => {
+    try {
+      setSessions(await window.daw.sessionList());
+    } catch {
+      // 列表刷新失败不阻塞会话
+    }
   };
 
-  // 会话持久化:写回 localStorage(修复只读不写导致切页/重启丢历史)
-  useEffect(() => {
+  const switchTo = async (id: string) => {
+    setActiveId(id);
+    setBusy(false);
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(sessions.filter((s) => s.bubbles.length > 0).slice(0, 30)));
+      // IPC 返回松散 JSON,边界处收敛为 SessionEvent
+      setEvents((await window.daw.sessionRead(id)) as unknown as SessionEvent[]);
     } catch {
-      // localStorage 满/不可用时不阻塞
+      setEvents([]);
     }
-  }, [sessions]);
+  };
 
+  // 启动:一次性迁移 localStorage → 磁盘 JSONL;再从磁盘装载会话列表
+  useEffect(() => {
+    let disposed = false;
+    void (async () => {
+      try {
+        const legacy = loadLegacySessions();
+        for (const s of legacy) {
+          if (s.bubbles.length > 0) await window.daw.sessionImport(s.id, s.bubbles);
+        }
+        if (legacy.length > 0) localStorage.removeItem(STORE_KEY);
+      } catch {
+        // 迁移失败不阻塞(旧数据留在 localStorage,下次再试)
+      }
+      const list = await window.daw.sessionList();
+      if (disposed) return;
+      setSessions(list);
+      if (list.length > 0) await switchTo(list[0]!.id);
+      else setActiveId(`s-${Date.now()}`);
+    })();
+    return () => {
+      disposed = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 实时事件 → 追加到事件流 → replayEvents 重放(与磁盘恢复同一条代码路径)
   useEffect(() => {
     const off = window.daw.onAgentEvent(({ sessionId: sid, ev }) => {
+      const e = ev as AgentEventLike;
       if (sid !== activeId) {
         // 旧会话的完成事件也须解除全局 busy(否则切会话后永久卡死)
-        const e0 = ev as AgentEvent;
-        if (e0.type === "done" || e0.type === "error") setBusy(false);
+        if (e.type === "done" || e.type === "error") setBusy(false);
         return;
       }
-      const e = ev as AgentEvent;
-      setBubbles((prev) => {
-        const next = [...prev];
-        const ensureAssistant = (): number => {
-          if (next.length === 0 || next[next.length - 1]!.role !== "assistant") next.push({ role: "assistant", text: "", tools: [] });
-          return next.length - 1;
-        };
-        if (e.type === "user") next.push({ role: "user", text: e.text });
-        else if (e.type === "assistant") {
-          const i = ensureAssistant();
-          next[i] = { ...next[i]!, text: e.text };
-        } else if (e.type === "tool") {
-          const i = ensureAssistant();
-          const cur = next[i]!;
-          next[i] = { ...cur, tools: [...(cur.tools ?? []), { name: e.name.replace(/^mcp__data-workbench__/, "") }] };
-        } else if (e.type === "tool_result") {
-          for (let j = next.length - 1; j >= 0; j--) {
-            const b = next[j]!;
-            if (b.role === "assistant" && b.tools?.length) {
-              b.tools[b.tools.length - 1] = { ...b.tools[b.tools.length - 1]!, summary: e.summary };
-              break;
-            }
-          }
-        } else if (e.type === "evidence") {
-          const i = ensureAssistant();
-          next[i] = { ...next[i]!, evidence: e.items };
-        }
-        return next;
-      });
-      if (e.type === "done" || e.type === "error") setBusy(false);
+      setEvents((prev) => [...prev, agentEventToSessionEvent(sid, e)]);
+      if (e.type === "done" || e.type === "error") {
+        setBusy(false);
+        void refreshSessions(); // 首条消息后列表出现新会话/时间排序更新
+      }
       setTimeout(() => bottom.current?.scrollIntoView({ behavior: "smooth" }), 60);
     });
     return off;
@@ -122,7 +160,7 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
 
   const send = async (text?: string) => {
     const q = (text ?? input).trim();
-    if (!q || busy) return;
+    if (!q || busy || !activeId) return;
     setInput("");
     setBusy(true);
     const r = await window.daw.send(activeId, q);
@@ -133,18 +171,22 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
   };
 
   const newSession = () => {
-    const id = `s-${Date.now()}`;
-    setActiveId(id);
+    setActiveId(`s-${Date.now()}`);
+    setEvents([]);
     setBusy(false);
-    setSessions((prev) => [{ id, ts: Date.now(), bubbles: [] }, ...prev.filter((s) => s.bubbles.length > 0)]);
   };
 
-  const removeSession = (id: string) => {
-    setSessions((prev) => {
-      const next = prev.filter((s) => s.id !== id);
-      if (id === activeId) setActiveId(next[0]?.id ?? `s-${Date.now()}`);
-      return next;
-    });
+  const removeSession = async (id: string) => {
+    await window.daw.sessionDelete(id);
+    const next = sessions.filter((s) => s.id !== id);
+    setSessions(next);
+    if (id === activeId) {
+      if (next.length > 0) await switchTo(next[0]!.id);
+      else {
+        setActiveId(`s-${Date.now()}`);
+        setEvents([]);
+      }
+    }
   };
 
   const exportReport = async () => {
@@ -169,8 +211,9 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
     else message.error(r.error ?? "导出失败");
   };
 
-  const timeStr = (ts: number): string => {
-    const d = new Date(ts);
+  const timeStr = (iso: string): string => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
     const today = new Date().toDateString() === d.toDateString();
     return today
       ? d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
@@ -179,32 +222,29 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
 
   return (
     <div className="daw-chat-wrap">
-      {/* 会话列表(dsh 风格二级面板) */}
+      {/* 会话列表(dsh 风格二级面板;权威源=磁盘 JSONL) */}
       <aside className="daw-side">
         <div className="daw-side-head">
           <span className="daw-side-title">会话</span>
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={newSession}>新对话</Button>
         </div>
         <div style={{ flex: 1, overflowY: "auto", paddingBottom: 8 }}>
-          {sessions.map((s) => {
-            const title = s.bubbles.find((b) => b.role === "user")?.text ?? "新对话";
-            return (
-              <div
-                key={s.id}
-                className={`daw-session-item${s.id === activeId ? " active" : ""}`}
-                onClick={() => { setActiveId(s.id); setBusy(false); }}
-              >
-                <div className="daw-session-title">{title}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span className="daw-session-time">{timeStr(s.ts)}</span>
-                  <DeleteOutlined
-                    className="daw-session-time"
-                    onClick={(e) => { e.stopPropagation(); removeSession(s.id); }}
-                  />
-                </div>
+          {sessions.map((s) => (
+            <div
+              key={s.id}
+              className={`daw-session-item${s.id === activeId ? " active" : ""}`}
+              onClick={() => void switchTo(s.id)}
+            >
+              <div className="daw-session-title">{s.title}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className="daw-session-time">{timeStr(s.lastTs)} · {s.messageCount} 问</span>
+                <DeleteOutlined
+                  className="daw-session-time"
+                  onClick={(e) => { e.stopPropagation(); void removeSession(s.id); }}
+                />
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </aside>
 
@@ -218,7 +258,7 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
                 <div className="daw-hero-sub">语义检索 → 口径一致查询 → 诊断归因,每个答案带证据</div>
                 <div className="daw-suggest">
                   {SUGGESTIONS.map((s) => (
-                    <div key={s} className="daw-suggest-card" onClick={() => send(s)}>{s}</div>
+                    <div key={s} className="daw-suggest-card" onClick={() => void send(s)}>{s}</div>
                   ))}
                 </div>
               </div>
@@ -232,20 +272,11 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
                     <span className="daw-ai-avatar">BW</span>
                     <span className="daw-ai-name">北斗work</span>
                   </div>
-                  <div className="daw-ai-body">{b.text || <Spin size="small" />}</div>
-                  {b.tools && b.tools.length > 0 && (
-                    <div className="daw-toolchips">
-                      {b.tools.map((t, j) => {
-                        const fail = t.summary?.includes("失败") || t.summary?.includes("拒绝");
-                        return (
-                          <span key={j} className={`daw-toolchip${fail ? " fail" : ""}`}>
-                            <span className="dot" />
-                            {t.name}{t.summary ? ` · ${t.summary}` : ""}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <div className="daw-ai-body">
+                    {b.text ? <Md text={b.text} /> : <Spin size="small" />}
+                    {b.error ? <div className="daw-ai-error">{b.error}</div> : null}
+                  </div>
+                  {b.tools && b.tools.length > 0 ? <Trajectory tools={b.tools} /> : null}
                 </div>
               ),
             )}
@@ -270,7 +301,7 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
-                    send();
+                    void send();
                   }
                 }}
               />
@@ -280,7 +311,7 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
                 icon={<SendOutlined style={{ fontSize: 14 }} />}
                 loading={busy}
                 disabled={!input.trim()}
-                onClick={() => send()}
+                onClick={() => void send()}
               />
             </div>
             <div className="daw-input-hint">
@@ -294,7 +325,7 @@ export default function ChatPage({ theme }: { theme?: boolean }) {
       <aside className="daw-evidence">
         <div className="daw-evidence-head">
           <span className="daw-side-title">证据 EvidencePack</span>
-          <Button size="small" type="text" icon={<ExportOutlined />} disabled={bubbles.length === 0} onClick={exportReport}>
+          <Button size="small" type="text" icon={<ExportOutlined />} disabled={bubbles.length === 0} onClick={() => void exportReport()}>
             导出报告
           </Button>
         </div>
