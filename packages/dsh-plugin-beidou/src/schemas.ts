@@ -23,8 +23,24 @@ export const BEIDOU_RESULT_SCHEMA = {
 /** 运行时产出值:可空字段以空值落盘,保证 dsh 端 schema 全必填成立 */
 export type BeidouToolValue = BeidouToolResult<Record<string, unknown>>;
 
+/**
+ * 深度清洗:删除所有值为 undefined 的属性。
+ * dsh 宿主 cloneJson 严格要求无损 JSON(undefined 属性值直接拒绝——"value is not
+ * lossless JSON");core 的 EvidenceItem 对可选字段显式赋 undefined,JSON.stringify
+ * 会静默丢弃但宿主不做 stringify 强转,故协议出口统一清洗。
+ */
+function pruneUndefined<T>(v: T): T {
+  if (v === undefined || v === null || typeof v !== "object") return v;
+  if (Array.isArray(v)) return v.map((x) => pruneUndefined(x)) as unknown as T;
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (val !== undefined) out[k] = pruneUndefined(val);
+  }
+  return out as unknown as T;
+}
+
 export function toToolValue(r: BeidouToolResult<Record<string, unknown> | undefined>): BeidouToolValue {
-  return {
+  return pruneUndefined({
     ok: r.ok,
     code: r.code,
     message: r.message ?? "",
@@ -32,5 +48,5 @@ export function toToolValue(r: BeidouToolResult<Record<string, unknown> | undefi
     warnings: r.warnings ?? [],
     evidence: (r.evidence ?? []) as EvidenceRef[],
     traceId: r.traceId,
-  };
+  });
 }

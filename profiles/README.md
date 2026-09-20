@@ -1,8 +1,15 @@
 # 北斗work DSH Profiles
 
 Phase A 起的 DSH 侧 profile 约定。**工具边界 patch 的唯一权威源是
-[beidou-web/cordis.patch.yml](beidou-web/cordis.patch.yml)**(禁 14 个内置工具行 + 插入
-beidou-work 插件);其他形态一律从它派生,不复制修改,防漂移(审核六轮 P0-03)。
+[beidou-common/cordis.patch.yml](beidou-common/cordis.patch.yml)**(禁 15 个内置
+工具行 + 插入 beidou-work 插件 + 模型固定 deepseek-official);由
+`node scripts/sync-beidou-profiles.mjs [--home <dir>]` 物化进 beidou-web /
+beidou-headless 两个 profile 并安装,不手抄,防漂移(审核六轮 P0-03)。
+
+> **重要(patch 文法)**:`- insert:` 只能新增条目(id 重复即 duplicate 报错);
+> 覆盖已有行必须用顶层条目 `- id: X` + `disabled: true` / `config:`。
+> 会话模型可能被 ~/.dsh/settings.yaml 里保存的选择覆盖——正式运行用独立
+> DSH_HOME(如 ~/.dsh-beidou),settings 全新则行默认(deepseek-official)生效。
 
 ## beidou-web(产品对话页)
 

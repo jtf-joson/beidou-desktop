@@ -1,0 +1,53 @@
+# 北斗work DSH profiles 共享边界 patch(单一权威源,由 scripts/sync-beidou-profiles.mjs
+# 物化进 beidou-web / beidou-headless 两个 profile,防复制漂移——审核六轮 P0-03)。
+#
+# 文法(cordis-plugin-include applyEntryPatches):
+# - {insert: [...]}              仅新增条目(id 重复会 duplicate 报错)
+# - {id: X, disabled: true}      覆盖已有行(按 id 定位,其余字段全部覆写)
+#
+# 本层做两件事:
+# 1. 插入 beidou-work 插件(占位符由 sync 脚本解析为本机 dist 绝对路径);
+# 2. 禁用 dsh-base 挂载的全部 15 个内置模型工具行(行 id 对照 dsh-base 0.1.5-rc.2
+#    的 cordis.patch.yml;DSH 升级后必须用 --dump-config 复核——审核六轮 P0-04)。
+# 模型可见工具面 = 仅北斗 8 业务工具 + 2 身份工具。
+- insert:
+    - id: beidou-work
+      name: '__BEIDOU_PLUGIN_ENTRY__'
+
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: tool-web
+  disabled: true
+
+# 决策 3:第一阶段仅 DeepSeek——beidou profile 的默认模型固定为原生 provider
+# (dsh-llm-deepseek 读 DEEPSEEK_API_KEY 环境变量,由产品壳注入)。
+- id: agent-default-model
+  config:
+    provider: deepseek-official
+    model: deepseek-chat

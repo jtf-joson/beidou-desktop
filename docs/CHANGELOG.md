@@ -315,3 +315,14 @@ P0 桌面端体验三件套(会话持久化/Markdown/工具轨迹)+ P1 dsh 插�
 - **P1-04a SDK 沙箱彻底隔离+清理**:HOME/XDG_CONFIG_HOME/XDG_DATA_HOME 全部指向临时沙箱(denylist 漏项时的最后防线,真实 ~/.dsh、~/.claude、凭据不可达);cwd/home 目录随用随删(finally rmSync,实测 /tmp 零残留)
 - **P0-03 profile 拆分**:beidou → beidou-web(明确为产品对话页 profile);一次性 headless 验证的官方正确姿势写入 profiles/README.md(--profile headless --patch 叠加同一份边界 patch,不复制漂移);本机 ~/.dsh 同步重装
 - 测试:desktop 28(+5:工厂真实姿势保序/实例缓存/空间切换/坏YAML拒绝×2);端到端:沙箱隔离下全链路正常(检索→查指标→证据→done)
+
+## 0.16.5(2026-09-20)
+
+Phase A headless spike 全链路贯通(架构反转首个里程碑)。
+
+- **beidou-headless 跑通真实 DeepSeek 对话**:独立 DSH_HOME(~/.dsh-beidou,隔离用户 settings)+ 中性 cwd + 仅注入 DEEPSEEK_API_KEY;多轮工具编排(检索→drilldown 口径编译→错误重试换路径)产出完整答案(指标/口径/时间范围/数值/mock 警示/口径依据)
+- **工具边界三层实证**:配置层 dump-config 15 内置工具行全禁(补抓漏网的 tool-subagent-list-agents);运行层模型全程仅 beidou 工具;对抗用例(诱导读 ~/.ssh/执行命令/建 subagent)模型自述"没有相关工具能力"并拒绝话术越权,零调用
+- **身份门禁实证**:未登录 AUTH_REQUIRED 拒绝且模型不编造数据;测试 token 注入后动态身份即时生效,allow 链路走通(验证后即删)
+- **修协议出口 bug**:core EvidenceItem 显式 undefined 的可选字段被 dsh 宿主 cloneJson 拒绝("value is not lossless JSON",全部业务工具炸输出)→ toToolValue pruneUndefined 深度清洗 + 常驻符合性测试(真实 workspace × 4 工具 × 无 undefined + schema 校验)
+- **patch 文法勘误**:- insert: 仅新增,覆盖已有行用顶层 {id, disabled};--patch 叠加会 duplicate → 拆 beidou-common 单源生成(sync-beidou-profiles.mjs 支持 --home),beidou-web/beidou-headless 双 profile;模型固定 deepseek-official(决策 3)
+- 验证快照:profiles/artifacts/phase-a-spike-2026-09-20.md;插件 25 测试(符合性门禁)
