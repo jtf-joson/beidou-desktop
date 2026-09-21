@@ -375,3 +375,12 @@ Phase A headless spike 全链路贯通(架构反转首个里程碑)。
 - 插件日志全部改 stderr(SDK 协议要求 stdout 纯 JSON-RPC;spike 实证插件 console.log 曾污染协议流)
 - DDAW_CHAT 调试钩子:UI 内真实对话+截图(实测全链:发送→思考→工具轨迹→回复)
 - spike 记录:SDK 协议 initialize 需 cwd/provider/model;session/prompt 用 contentBlocks;DSH 会话有 per-sessionId 持久化,lazy-create;另发现 permission preset 默认 workspace-write(工具已禁,影响有限;收紧列入待办)
+
+## 0.17.3(2026-09-21)
+
+对话页定版:壳只出定制导航栏,DSH 界面全套复用(用户决策:垂域 agent 通用能力直接接入,重点打磨定制内容)。
+
+- **智能分析助手 = DSH Web 完整界面**(WebContentsView 内嵌,恢复 0.17.1 链):DSH 自带会话列表/历史/恢复 + 对话区 + 右侧轨迹栏 + 原装渲染与主题——内容展示效果即 DSH Desktop 水准,零前端可视化开发
+- **壳仅保留定制化左侧分组导航**(分析/语义治理/智能资产/系统)+ 顶栏;无双导航:壳 rail=图标级菜单,DSH 侧栏=会话列表,职责分明
+- 0.17.2 的自研聊天窗口退役(dsh:send/sessions/status/onDshEvent 删除);beidou-sdk profile 保留(供 headless/黄金问题回归等自动化测试)
+- 沿用 0.17.1 全部运行时治理:状态机/崩溃自动重连/空间切换重建/View 安全(sandbox+origin 白名单+权限默认拒)/env allowlist/workspace+openId 注入

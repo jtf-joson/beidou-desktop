@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, WebContentsView, ipcMain, dialog } from "electron";
 import { join, dirname } from "node:path";
 import { appendFile, readFile, copyFile, mkdir, readdir, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
@@ -22,6 +22,7 @@ import {
 } from "./spaces";
 
 let mainWindow: BrowserWindow | null = null;
+let dshView: WebContentsView | null = null;
 let workspace: LoadedWorkspace | null = null;
 let registry: SpacesRegistry = { spaces: [] };
 let identity: Identity | null = null;
@@ -34,6 +35,25 @@ const AUTH_CACHE_DIR = join(homedir(), ".beidou", "auth"); // P0-6:统一路径(
 
 function send(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload);
+}
+
+/** 外链仅 http(s) 经系统浏览器放行(导航边界共用工具) */
+async function openExternalHttps(raw: string): Promise<void> {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return;
+    const { shell } = await import("electron");
+    await shell.openExternal(u.href).catch(() => undefined);
+  } catch { /* 非法 URL 忽略 */ }
+}
+
+/** 销毁 DSH 内嵌视图(空间切换/模型配置变更后由下次 attach 重建) */
+function destroyDshView(): void {
+  if (dshView) {
+    mainWindow?.contentView.removeChildView(dshView);
+    dshView.webContents.close();
+    dshView = null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -229,8 +249,9 @@ async function activateSpace(entry: SpaceEntry): Promise<void> {
   await ensureWorkspace(entry.dir, identity?.username);
   workspace = loadWorkspace(entry.dir);
   // P0-01(审核七轮):空间切换 → DSH 运行时/内嵌视图随新空间重建(数据隔离)
-  if (dshRuntime.currentPhase !== "idle") {
+  if (dshView || dshRuntime.state) {
     await dshRuntime.stop();
+    destroyDshView();
     send("dsh:restart", { workspaceDir: workspace.dir });
   }
 }
@@ -669,8 +690,11 @@ function registerIpc(): void {
     if (!merged.ok) return { ok: false, error: merged.error };
     await writeConfigAtomic(configPath, merged.value);
     await activateSpace(activeSpace(registry)!); // 配置即时生效
-    // P0-06:key 变更 → DSH 重启(新 env 生效)
-    void dshRuntime.stop().then(() => send("dsh:restart", {}));
+    // P0-06:key 变更 → DSH 重启 + 视图销毁重建(新 URL 必须重新 loadURL)
+    void dshRuntime.stop().then(() => {
+      destroyDshView();
+      send("dsh:restart", {});
+    });
     return { ok: true };
   });
 
@@ -717,32 +741,41 @@ function registerIpc(): void {
     };
   };
 
-  ipcMain.handle("dsh:start", async () => {
+  ipcMain.handle("dsh:attach", async (_e, rect: { x: number; y: number; width: number; height: number }) => {
     try {
       const cfg = dshConfig();
       if ("error" in cfg) return { ok: false, error: cfg.error };
-      await dshRuntime.start(cfg);
+      const state = await dshRuntime.start(cfg);
+      if (!dshView) {
+        // View 安全边界(审核七轮 P0-07):sandbox + 精确 origin 导航 + window-open 拒绝 + 权限默认拒
+        dshView = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+        const origin = new URL(state.url).origin;
+        dshView.webContents.setWindowOpenHandler(({ url: u }) => {
+          void openExternalHttps(u);
+          return { action: "deny" };
+        });
+        dshView.webContents.on("will-navigate", (e, u) => {
+          try {
+            if (new URL(u).origin !== origin) { e.preventDefault(); void openExternalHttps(u); }
+          } catch { e.preventDefault(); }
+        });
+        dshView.webContents.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+        mainWindow?.contentView.addChildView(dshView);
+        await dshView.webContents.loadURL(state.url);
+      }
+      dshView.setBounds(rect);
+      dshView.setVisible(true);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   });
-  ipcMain.handle("dsh:send", async (_e, sessionId: string, text: string) => {
-    if (!can(currentRole(), "tool:query", DEFAULT_POLICY)) {
-      return { ok: false, error: "当前角色无查询权限" };
-    }
-    try {
-      const cfg = dshConfig();
-      if ("error" in cfg) return { ok: false, error: cfg.error };
-      await dshRuntime.start(cfg); // 幂等;空间变化自动重启
-      const r = await dshRuntime.prompt(sessionId, text);
-      return { ok: true, messageId: r.messageId };
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) };
-    }
+  ipcMain.handle("dsh:bounds", (_e, rect: { x: number; y: number; width: number; height: number }) => {
+    dshView?.setBounds(rect);
   });
-  ipcMain.handle("dsh:sessions", () => dshRuntime.listSessions());
-  ipcMain.handle("dsh:status", () => ({ phase: dshRuntime.currentPhase }));
+  ipcMain.handle("dsh:hide", () => {
+    dshView?.setVisible(false);
+  });
 }
 
 app?.whenReady?.().then(async () => {
@@ -807,21 +840,13 @@ app?.whenReady?.().then(async () => {
         console.log("[topbar]", topbar);
         const dawKeys = await mainWindow!.webContents.executeJavaScript(`Object.keys(window.daw ?? {}).join(",")`);
         console.log("[daw-api]", dawKeys);
-        // 探针:替渲染层直接调 dshStart + 检查 ChatPage 挂载
-        const probe = await mainWindow!.webContents.executeJavaScript(`(async () => {
-          const host = document.querySelector(".daw-conv-col");
-          let st = "dshStart未调";
-          try { const r = await window.daw.dshStart(); st = r.ok ? "OK" : "FAIL:" + r.error; } catch (e) { st = "THREW:" + e; }
-          return JSON.stringify({ hostExists: !!host, dshStart: st });
-        })()`);
-        console.log("[probe]", probe);
-        if (process.env.DDAW_CHAT) {
-          // UI 内真实对话验证:渲染层发送 → 等回复 → 轨迹/气泡留在页面上随截图带出
-          await mainWindow!.webContents.executeJavaScript(
-            `(async () => { const ta = document.querySelector("textarea"); const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set; setter.call(ta, ${JSON.stringify(process.env.DDAW_CHAT)}); ta.dispatchEvent(new Event("input", { bubbles: true })); await new Promise(r => setTimeout(r, 200)); document.querySelectorAll("button").forEach(b => { if (b.querySelector(".anticon-send")) b.click(); }); return "sent"; })()`,
-          );
-          await new Promise((r) => setTimeout(r, Number(process.env.DDAW_CHAT_WAIT ?? 45_000)));
-        }
+        // 探针:检查 DSH 内嵌视图是否加载
+        if (dshView) {
+          try {
+            const t = await dshView.webContents.executeJavaScript("JSON.stringify({ title: document.title, text: (document.body?.innerText ?? \"\").slice(0, 80) })");
+            console.log("[dsh-view]", t);
+          } catch (e) { console.log("[dsh-view] eval failed:", e instanceof Error ? e.message : e); }
+        } else { console.log("[dsh-view] 未创建"); }
         if (process.env.DDAW_PAGE) {
           // DEBUG 页面导航:点击侧栏按钮后再截图(验证非默认页)
           await mainWindow!.webContents.executeJavaScript(
@@ -846,8 +871,6 @@ app?.on?.("before-quit", () => {
 });
 // P0-05:运行时崩溃 → 通知渲染层(拒绝假健康,聊天窗口提示重连)
 dshRuntime.onCrashed = () => send("dsh:restart", { crashed: true });
-// SDK 事件流转发渲染层(聊天窗口消费)
-dshRuntime.onEvent = (frame) => send("dsh:event", frame);
 
 app?.on?.("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
