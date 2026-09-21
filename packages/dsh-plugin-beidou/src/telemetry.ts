@@ -17,7 +17,7 @@ export function createTelemetrySink(opts: {
   return {
     async append(e) {
       const line = `[beidou-telemetry] ${e.tool} ${e.resultCode} ${e.durationMs ?? "-"}ms trace=${e.traceId}`;
-      (opts.log ?? ((l: string) => console.log(l)))(line);
+      (opts.log ?? ((l: string) => console.error(l)))(line);
       // 复用 core 审计管道(写入前统一脱敏;V2 事件作为 detail 全量保留)
       await opts.audit?.append({
         ts: e.timestamp,

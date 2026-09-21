@@ -100,7 +100,7 @@ export function registerIdentityTools(ctx: Context, opts: { auth?: IdaasAuth } =
         void auth.completeLogin({ sessionId, openId: OPEN_ID, poll: { intervalMs: 3000, maxAttempts: 100 } })
           .then((r) => {
             settleLoginResult(r);
-            if (r.ok) console.log("[beidou-work] IDaaS login completed, token saved");
+            if (r.ok) console.error("[beidou-work] IDaaS login completed, token saved");
             else console.error("[beidou-work] IDaaS login failed:", r.error.code, r.error.message);
           })
           .catch((e) => {

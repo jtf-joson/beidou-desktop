@@ -44,12 +44,16 @@ const api = {
   sessionDelete: (id: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("session:delete", id),
   sessionImport: (id: string, bubbles: unknown): Promise<{ ok: boolean; count: number }> => ipcRenderer.invoke("session:import", id, bubbles),
   exportReport: (markdown: string): Promise<{ ok: boolean; file?: string; error?: string }> => ipcRenderer.invoke("report:export", markdown),
-  dshStart: (): Promise<{ ok: boolean; url?: string; error?: string }> => ipcRenderer.invoke("dsh:start"),
-  dshAttach: (rect: { x: number; y: number; width: number; height: number }): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke("dsh:attach", rect),
-  dshBounds: (rect: { x: number; y: number; width: number; height: number }): Promise<void> =>
-    ipcRenderer.invoke("dsh:bounds", rect),
-  dshHide: (): Promise<void> => ipcRenderer.invoke("dsh:hide"),
+  dshStart: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke("dsh:start"),
+  dshSend: (sessionId: string, text: string): Promise<{ ok: boolean; messageId?: string; error?: string }> =>
+    ipcRenderer.invoke("dsh:send", sessionId, text),
+  dshSessions: (): Promise<Array<{ id: string; title: string; lastTs: string }>> => ipcRenderer.invoke("dsh:sessions"),
+  dshStatus: (): Promise<{ phase: string }> => ipcRenderer.invoke("dsh:status"),
+  onDshEvent: (cb: (frame: unknown) => void): (() => void) => {
+    const listener = (_e: unknown, frame: unknown) => cb(frame);
+    ipcRenderer.on("dsh:event", listener);
+    return () => ipcRenderer.removeListener("dsh:event", listener);
+  },
   onDshRestart: (cb: (payload: { workspaceDir?: string; crashed?: boolean }) => void): (() => void) => {
     const listener = (_e: unknown, payload: { workspaceDir?: string; crashed?: boolean }) => cb(payload);
     ipcRenderer.on("dsh:restart", listener);

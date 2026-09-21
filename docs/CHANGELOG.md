@@ -364,3 +364,14 @@ Phase A headless spike 全链路贯通(架构反转首个里程碑)。
 - **P0-08 执行层门禁**:policy.ts 工具名正向白名单(8 业务+2 身份,越界=TOOL_NOT_ALLOWED 新契约错误码 fail-closed)+ 常驻测试;新增 scripts/check-dsh-tool-boundary.mjs(配置层 CI 断言:dump-config 15 行全禁+插件在+模型固定,已验证通过)
 - **P1-04/P1-09 顺手修**:pruneUndefined 数组元素 undefined 清洗;删 @modelcontextprotocol/sdk、preload onAgentEvent/send、dsh-entry.mjs 死资源
 - 测试:contracts 2(+TOOL_NOT_ALLOWED)/插件 27(+白名单裁决)/桌面 16/core 208;真机:attach→崩溃→自动重启→env 注入全链验证
+
+## 0.17.2(2026-09-21)
+
+按方案 IA 重构导航 + 对话页去嵌入化:自研聊天窗口经 DSH SDK 运行时驱动。
+
+- **左侧分组导航(方案定版 IA)**:分析(智能分析助手/分析历史)、语义治理(语义资产)、智能资产(知识与 SOP)、系统(数据连接/审计日志/系统设置);未完成菜单(业务看板/评测中心/语义版本)按方案第一阶段隐藏,上线时再挂;RBAC key 不变
+- **对话页 = 自研聊天窗口(去 DSH Web 嵌入,消双导航)**:新增 beidou-sdk profile(dsh-base+dsh-sdk-app),dsh-runtime 重写为 stdio JSON-RPC 客户端(@deepseek-ai/dsh-sdk-protocol:initialize→session/prompt→session.event/status 流);WebContentsView 嵌入层整体删除
+- 聊天窗口:会话列表(本地索引,标题来自 DSH session/title 事件)+ 气泡流(user/message→用户气泡;assistant/message→回复+💭思考过程折叠;tool/call+result 按**原生 callId** 配对轨迹——审核七轮 P1-02 的诉求在 SDK 协议中天然满足)+ 输入框;崩溃/空间切换自动重连
+- 插件日志全部改 stderr(SDK 协议要求 stdout 纯 JSON-RPC;spike 实证插件 console.log 曾污染协议流)
+- DDAW_CHAT 调试钩子:UI 内真实对话+截图(实测全链:发送→思考→工具轨迹→回复)
+- spike 记录:SDK 协议 initialize 需 cwd/provider/model;session/prompt 用 contentBlocks;DSH 会话有 per-sessionId 持久化,lazy-create;另发现 permission preset 默认 workspace-write(工具已禁,影响有限;收紧列入待办)

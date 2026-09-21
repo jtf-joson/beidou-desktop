@@ -48,11 +48,20 @@ const PAGE_META: Record<string, { icon: React.ReactNode; title: string }> = {
   chat: { icon: <MessageOutlined />, title: "智能分析助手" },
   history: { icon: <HistoryOutlined />, title: "分析历史" },
   semantics: { icon: <ApartmentOutlined />, title: "语义资产" },
-  skills: { icon: <ThunderboltOutlined />, title: "技能" },
-  plugins: { icon: <ApiOutlined />, title: "插件与数据源" },
-  audit: { icon: <FileSearchOutlined />, title: "审计" },
-  settings: { icon: <SettingOutlined />, title: "设置" },
+  skills: { icon: <ThunderboltOutlined />, title: "知识与 SOP" },
+  plugins: { icon: <ApiOutlined />, title: "数据连接" },
+  audit: { icon: <FileSearchOutlined />, title: "审计日志" },
+  settings: { icon: <SettingOutlined />, title: "系统设置" },
 };
+
+/** 左侧导航信息架构(方案定版:分组业务导航;第一阶段只挂已完成页面,
+ * 未完成菜单——业务看板/评测中心/语义版本等——上线时再挂) */
+const NAV_GROUPS: Array<{ label: string; keys: string[] }> = [
+  { label: "分析", keys: ["chat", "history"] },
+  { label: "语义治理", keys: ["semantics"] },
+  { label: "智能资产", keys: ["skills"] },
+  { label: "系统", keys: ["plugins", "audit", "settings"] },
+];
 
 export default function App() {
   const [page, setPage] = useState("chat");
@@ -157,17 +166,26 @@ export default function App() {
         {/* 细图标栏(dsh 风格) */}
         <aside className="daw-rail">
           <div className="daw-rail-logo">BW</div>
-          {railItems.map(([key, m]) => (
-            <Tooltip key={key} title={m.title} placement="right">
-              <button
-                className={`daw-rail-btn${page === key ? " active" : ""}`}
-                data-page={key}
-                onClick={() => setPage(key)}
-              >
-                {m.icon}
-              </button>
-            </Tooltip>
-          ))}
+          {NAV_GROUPS.map((g) => {
+            const items = railItems.filter(([key]) => g.keys.includes(key));
+            if (items.length === 0) return null;
+            return (
+              <div key={g.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                <div className="daw-rail-group">{g.label}</div>
+                {items.map(([key, m]) => (
+                  <Tooltip key={key} title={`${g.label} · ${m.title}`} placement="right">
+                    <button
+                      className={`daw-rail-btn${page === key ? " active" : ""}`}
+                      data-page={key}
+                      onClick={() => setPage(key)}
+                    >
+                      {m.icon}
+                    </button>
+                  </Tooltip>
+                ))}
+              </div>
+            );
+          })}
           <div className="daw-rail-spacer" />
           <Dropdown menu={identityMenu} trigger={["click"]} placement="topRight">
             <button className="daw-rail-btn" style={{ display: "flex" }}>

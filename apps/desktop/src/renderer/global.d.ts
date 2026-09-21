@@ -41,10 +41,11 @@ interface DawApi {
   readEntities(): Promise<{ ok: boolean; text?: string }>;
   saveEntities(text: string): Promise<{ ok: boolean; error?: string }>;
   saveMembers(text: string): Promise<{ ok: boolean; error?: string }>;
-  dshStart(): Promise<{ ok: boolean; url?: string; error?: string }>;
-  dshAttach(rect: { x: number; y: number; width: number; height: number }): Promise<{ ok: boolean; error?: string }>;
-  dshBounds(rect: { x: number; y: number; width: number; height: number }): Promise<void>;
-  dshHide(): Promise<void>;
+  dshStart(): Promise<{ ok: boolean; error?: string }>;
+  dshSend(sessionId: string, text: string): Promise<{ ok: boolean; messageId?: string; error?: string }>;
+  dshSessions(): Promise<Array<{ id: string; title: string; lastTs: string }>>;
+  dshStatus(): Promise<{ phase: string }>;
+  onDshEvent(cb: (frame: unknown) => void): () => void;
   onDshRestart(cb: (payload: { workspaceDir?: string; crashed?: boolean }) => void): () => void;
 }
 

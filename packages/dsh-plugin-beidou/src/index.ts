@@ -17,7 +17,7 @@ export const inject = ["tools", "systemPrompt"];
 
 export function apply(ctx: Context) {
   const workspace = process.env.BEIDOU_WORKSPACE ?? join(homedir(), "Library/Application Support/北斗work/workspace");
-  console.log("[beidou-work] plugin loading (workspace:", workspace, ")");
+  console.error("[beidou-work] plugin loading (workspace:", workspace, ")");
 
   // P1-1:同步 apply(Cordis 不 await async);异步初始化 + 错误传播(非静默)
   void (async () => {
@@ -47,7 +47,7 @@ export function apply(ctx: Context) {
   const auth = buildIdaasAuth();
   const getIdentity = createIdentityProvider(auth, OPEN_ID);
   void getIdentity().then((id) =>
-    console.log("[beidou-work] startup identity:", id ? id.username : "(not logged in)"),
+    console.error("[beidou-work] startup identity:", id ? id.username : "(not logged in)"),
   );
 
   // P1 systemPrompt:路由协议 + 空间资产清单注入 dsh 系统 prompt。
@@ -61,7 +61,7 @@ export function apply(ctx: Context) {
   registerBusinessTools(ctx, toolCtx, getIdentity);
   registerIdentityTools(ctx, { auth }); // Phase 4:身份工具 ×2
 
-  console.log("[beidou-work] 8 business + 2 identity tools registered (BeidouToolResult 单轨, 动态身份), systemPrompt injected, mock:", built.isMock);
+  console.error("[beidou-work] 8 business + 2 identity tools registered (BeidouToolResult 单轨, 动态身份), systemPrompt injected, mock:", built.isMock);
   })().catch((e) => {
     console.error("[beidou-work] FATAL: context build failed:", e);
     throw e; // 让插件启动失败(非静默)

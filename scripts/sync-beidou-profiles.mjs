@@ -19,7 +19,7 @@ const homeIdx = process.argv.indexOf("--home");
 const targetHome = homeIdx > -1 ? resolve(process.argv[homeIdx + 1] ?? "") : join(homedir(), ".dsh");
 const DSH_PROFILES = join(targetHome, "profiles");
 
-const PROFILES = ["beidou-web", "beidou-headless"];
+const PROFILES = ["beidou-web", "beidou-headless", "beidou-sdk"];
 const patch = readFileSync(join(root, "profiles/beidou-common/cordis.patch.yml"), "utf-8");
 const materialized = patch.replaceAll("__BEIDOU_PLUGIN_ENTRY__", PLUGIN_DIST);
 
