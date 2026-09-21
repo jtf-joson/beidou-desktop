@@ -123,10 +123,10 @@ export default function SettingsPage({ ws, onRefresh }: { ws: WsState | null; on
 
 /** 模型配置(dsh-desktop 式):结构化表单,密钥只写不读 */
 function ModelTab({ ws, onRefresh }: { ws: WsState | null; onRefresh: () => void }) {
-  const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com/anthropic");
-  const [model, setModel] = useState("deepseek-chat");
+    const [model, setModel] = useState("deepseek-chat");
   const [apiKey, setApiKey] = useState("");
   const [state, setState] = useState<{ keyConfigured?: boolean; keySource?: "auth_token" | "env" | "none"; envVar?: string | null }>({});
+  const [provider, setProvider] = useState("deepseek-official");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message?: string } | null>(null);
@@ -135,7 +135,7 @@ function ModelTab({ ws, onRefresh }: { ws: WsState | null; onRefresh: () => void
   useEffect(() => {
     void window.daw.modelRead().then((r) => {
       if (!r.ok) return;
-      setBaseUrl(r.baseUrl ?? "https://api.deepseek.com/anthropic");
+      setProvider(r.provider ?? "deepseek-official");
       setModel(r.model ?? "deepseek-chat");
       setState({ keyConfigured: r.keyConfigured, keySource: r.keySource, envVar: r.envVar });
     });
@@ -143,7 +143,7 @@ function ModelTab({ ws, onRefresh }: { ws: WsState | null; onRefresh: () => void
 
   const save = async () => {
     setSaving(true);
-    const r = await window.daw.modelSave({ baseUrl, model, apiKey });
+    const r = await window.daw.modelSave({ apiKey });
     setSaving(false);
     if (r.ok) {
       message.success("模型配置已保存,即时生效");
@@ -176,16 +176,13 @@ function ModelTab({ ws, onRefresh }: { ws: WsState | null; onRefresh: () => void
         }
       />
       <div style={{ display: "grid", gap: 10, maxWidth: 560 }}>
+        <Descriptions bordered column={1} size="small">
+          <Descriptions.Item label="Provider / 模型">
+            {provider} / {model}(由 beidou DSH Profile 固定,只读——审核七轮 P0-06)
+          </Descriptions.Item>
+        </Descriptions>
         <label style={{ fontSize: 12 }}>
-          Base URL(Anthropic 兼容端点)
-          <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} disabled={!isAdmin} style={{ marginTop: 4 }} placeholder="https://api.deepseek.com/anthropic" />
-        </label>
-        <label style={{ fontSize: 12 }}>
-          模型名
-          <Input value={model} onChange={(e) => setModel(e.target.value)} disabled={!isAdmin} style={{ marginTop: 4 }} placeholder="deepseek-chat" />
-        </label>
-        <label style={{ fontSize: 12 }}>
-          API Key
+          API Key(DeepSeek 官方)
           <Input.Password
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}

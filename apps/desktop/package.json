@@ -1,7 +1,7 @@
 {
   "name": "@beidou/desktop",
   "productName": "北斗work",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "北斗work —— 数据智能体工作台(仿 DataBuddy:语义配置 + 技能插件 + 智能问数/下钻/明细分析)",
   "main": "out/main/index.js",
   "private": true,
@@ -19,7 +19,6 @@
   "dependencies": {
     "@beidou/core": "file:../../packages/beidou-core",
     "@beidou/ontology-schema": "file:../../packages/ontology-schema",
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "dompurify": "^3.4.15",
     "marked": "^18.0.13",
     "mysql2": "^3.11.0",

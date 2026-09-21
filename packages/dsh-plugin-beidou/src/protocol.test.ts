@@ -3,7 +3,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { classifyError } from "./errors";
-import { decideToolAccess } from "./policy";
+import { decideToolAccess, BUSINESS_TOOLS, ALLOWED_TOOLS } from "./policy";
 import { toBeidouResult, renderBeidouResult } from "./adapter";
 import { toToolValue } from "./schemas";
 import { createTelemetrySink, withTelemetry } from "./telemetry";
@@ -32,6 +32,17 @@ describe("classifyError(错误单轨归类)", () => {
 });
 
 describe("decideToolAccess(策略裁决)", () => {
+  it("P0-08:非白名单工具 → deny + TOOL_NOT_ALLOWED(配置漂移 fail-closed)", () => {
+    for (const evil of ["Bash", "Read", "tool-web", "mcp__evil__run", "subagent", ""]) {
+      const r = decideToolAccess({ tool: evil, identity: { username: "u", source: "idaas-token" } });
+      expect(r.decision).toBe("deny");
+      expect(r.code).toBe("TOOL_NOT_ALLOWED");
+    }
+  });
+  it("白名单恰为 8 业务 + 2 身份", () => {
+    expect(BUSINESS_TOOLS.size).toBe(8);
+    expect(ALLOWED_TOOLS.size).toBe(10);
+  });
   it("身份工具始终放行(否则无法登录)", () => {
     expect(decideToolAccess({ tool: "beidou_login" }).decision).toBe("allow");
     expect(decideToolAccess({ tool: "beidou_auth_status" }).decision).toBe("allow");

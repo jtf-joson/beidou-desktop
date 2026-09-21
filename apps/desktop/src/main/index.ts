@@ -37,6 +37,25 @@ function send(channel: string, payload: unknown): void {
   mainWindow?.webContents.send(channel, payload);
 }
 
+/** 外链仅 http(s) 经系统浏览器放行(导航边界共用工具) */
+async function openExternalHttps(raw: string): Promise<void> {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return;
+    const { shell } = await import("electron");
+    await shell.openExternal(u.href).catch(() => undefined);
+  } catch { /* 非法 URL 忽略 */ }
+}
+
+/** P0-01/P0-06(审核七轮):销毁 DSH 内嵌视图(空间切换/模型配置变更后由下次 attach 重建) */
+function destroyDshView(): void {
+  if (dshView) {
+    mainWindow?.contentView.removeChildView(dshView);
+    dshView.webContents.close();
+    dshView = null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 身份与认证(优先级:IDaaS token > ept IDaaS 会话 > 未登录)
 // 协议:~/.codex/skills/idaas-auth-protocol(SKILL.md v1.0.4)
@@ -229,6 +248,12 @@ function currentRole(): Role {
 async function activateSpace(entry: SpaceEntry): Promise<void> {
   await ensureWorkspace(entry.dir, identity?.username);
   workspace = loadWorkspace(entry.dir);
+  // P0-01(审核七轮):空间切换 → DSH 运行时/内嵌视图随新空间重建(数据隔离)
+  if (dshView || dshRuntime.state) {
+    await dshRuntime.stop();
+    destroyDshView();
+    send("dsh:restart", { workspaceDir: workspace.dir });
+  }
 }
 
 async function bootstrapSpaces(): Promise<void> {
@@ -665,7 +690,11 @@ function registerIpc(): void {
     if (!merged.ok) return { ok: false, error: merged.error };
     await writeConfigAtomic(configPath, merged.value);
     await activateSpace(activeSpace(registry)!); // 配置即时生效
-    dshRuntime.stop(); // key 变更:重启 DSH 使新 env 生效(下次 dsh:start 拉起)
+    // P0-06(审核七轮):key 变更 → DSH 重启 + 视图销毁重建(新 URL 必须重新 loadURL)
+    void dshRuntime.stop().then(() => {
+      destroyDshView();
+      send("dsh:restart", {});
+    });
     return { ok: true };
   });
 
@@ -676,7 +705,7 @@ function registerIpc(): void {
     const { m } = await modelSection();
     const token = resolveModelToken(m);
     if (!token) return { ok: false, message: "未配置 API Key(设置页填入后测试)" };
-    return testModelEndpoint(m.base_url ?? "https://api.deepseek.com/anthropic", token, m.model ?? "deepseek-chat");
+    return testModelEndpoint(m.base_url ?? "https://api.deepseek.com", token);
   });
 
   ipcMain.handle("config:test", async () => {
@@ -703,10 +732,20 @@ function registerIpc(): void {
   });
 
   // ---- DSH 唯一 Agent Runtime:对话页内嵌 DSH Web(beidou-web profile)----
+  const dshConfig = (): { apiKey?: string; workspaceDir: string; openId: string } | { error: string } => {
+    if (!workspace) return { error: "no workspace" };
+    return {
+      apiKey: resolveModelToken(readModelSectionRaw(workspace)),
+      workspaceDir: workspace.dir,
+      openId: currentOpenId(),
+    };
+  };
+
   ipcMain.handle("dsh:start", async () => {
     try {
-      const token = workspace ? resolveModelToken(readModelSectionRaw(workspace)) : undefined;
-      const state = await dshRuntime.start({ DEEPSEEK_API_KEY: token });
+      const cfg = dshConfig();
+      if ("error" in cfg) return { ok: false, error: cfg.error };
+      const state = await dshRuntime.start(cfg);
       return { ok: true, url: state.url };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -716,10 +755,28 @@ function registerIpc(): void {
   // WebContentsView 承载 DSH Web(渲染层经 ResizeObserver 上报容器矩形)
   ipcMain.handle("dsh:attach", async (_e, rect: { x: number; y: number; width: number; height: number }) => {
     try {
-      const token = workspace ? resolveModelToken(readModelSectionRaw(workspace)) : undefined;
-      const state = await dshRuntime.start({ DEEPSEEK_API_KEY: token });
+      const cfg = dshConfig();
+      if ("error" in cfg) return { ok: false, error: cfg.error };
+      const state = await dshRuntime.start(cfg);
+      console.log(`[dsh-attach] runtime ready view=${dshView ? "复用" : "新建"}`);
       if (!dshView) {
-        dshView = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false } });
+        // P0-07(审核七轮):内嵌视图独立安全边界——sandbox + 精确 origin 导航白名单
+        // + window-open 拒绝(外链走系统浏览器)+ 权限默认拒绝
+        dshView = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+        const origin = new URL(state.url).origin;
+        dshView.webContents.setWindowOpenHandler(({ url: u }) => {
+          void openExternalHttps(u);
+          return { action: "deny" };
+        });
+        dshView.webContents.on("will-navigate", (e, u) => {
+          try {
+            if (new URL(u).origin !== origin) {
+              e.preventDefault();
+              void openExternalHttps(u);
+            }
+          } catch { e.preventDefault(); }
+        });
+        dshView.webContents.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
         mainWindow?.contentView.addChildView(dshView);
         await dshView.webContents.loadURL(state.url);
       }
@@ -835,8 +892,13 @@ app?.whenReady?.().then(async () => {
 });
 
 app?.on?.("before-quit", () => {
-  dshRuntime.stop();
+  void dshRuntime.stop();
 });
+// P0-05:运行时崩溃 → 通知渲染层(拒绝假健康,ChatPage 提示重启)
+dshRuntime.onCrashed = () => {
+  console.log("[dsh-runtime] onCrashed → 通知渲染层重启");
+  send("dsh:restart", { crashed: true });
+};
 
 app?.on?.("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

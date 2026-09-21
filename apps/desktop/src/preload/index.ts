@@ -50,10 +50,10 @@ const api = {
   dshBounds: (rect: { x: number; y: number; width: number; height: number }): Promise<void> =>
     ipcRenderer.invoke("dsh:bounds", rect),
   dshHide: (): Promise<void> => ipcRenderer.invoke("dsh:hide"),
-  onAgentEvent: (cb: (payload: { sessionId: string; ev: unknown }) => void): (() => void) => {
-    const listener = (_e: unknown, payload: { sessionId: string; ev: unknown }) => cb(payload);
-    ipcRenderer.on("agent:event", listener);
-    return () => ipcRenderer.removeListener("agent:event", listener);
+  onDshRestart: (cb: (payload: { workspaceDir?: string; crashed?: boolean }) => void): (() => void) => {
+    const listener = (_e: unknown, payload: { workspaceDir?: string; crashed?: boolean }) => cb(payload);
+    ipcRenderer.on("dsh:restart", listener);
+    return () => ipcRenderer.removeListener("dsh:restart", listener);
   },
 };
 

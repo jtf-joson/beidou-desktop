@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ERROR_CODES, type BeidouToolResult } from "./index";
 
 describe("@beidou/contracts 协议层", () => {
-  it("错误码 12 个、唯一、全大写下划线(机器可判别)", () => {
-    expect(ERROR_CODES).toHaveLength(12);
-    expect(new Set(ERROR_CODES).size).toBe(12);
+  it("错误码 13 个、唯一、全大写下划线(机器可判别)", () => {
+    expect(ERROR_CODES).toHaveLength(13);
+    expect(new Set(ERROR_CODES).size).toBe(13);
     for (const c of ERROR_CODES) expect(c).toMatch(/^[A-Z_]+$/);
   });
   it("BeidouToolResult 结构自洽(ok↔code 约定)", () => {

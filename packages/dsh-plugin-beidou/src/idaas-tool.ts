@@ -15,7 +15,9 @@ import { appendFile, readFile, writeFile, rename, chmod, mkdir } from "node:fs/p
 import { existsSync } from "node:fs";
 
 const APP_ID = process.env.BEIDOU_IDAAS_APP_ID ?? "beidou-desktop";
-export const OPEN_ID = "owner";
+/** P0-02(审核七轮):openId 不再硬编码 owner——由产品壳注入 BEIDOU_OPEN_ID
+ * (与 Electron 侧 currentOpenId() 同源,共用同一 token 文件;缺省回退 owner 仅限裸跑场景) */
+export const OPEN_ID = process.env.BEIDOU_OPEN_ID ?? "owner";
 const AUTH_DIR = join(homedir(), ".beidou", "auth");
 const TOKEN_FILE = join(AUTH_DIR, "apps", APP_ID, "users", `${OPEN_ID}.json`);
 

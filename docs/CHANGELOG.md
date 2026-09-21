@@ -350,3 +350,17 @@ Phase A headless spike 全链路贯通(架构反转首个里程碑)。
 ### 待办(打包链)
 - 打包版:node_modules 需出 asar(bundle 依赖)+ node ≥22.15 二进制来源(内置或 DAW_NODE_BIN);dev 链路已全通
 - 测试:core 208 + 插件 25 + 桌面 16;类型检查零错误
+
+## 0.17.1(2026-09-21)
+
+第七轮审核第一批 P0(Runtime 基础)修复,真机验证含崩溃恢复链。
+
+- **P0-01 workspace 注入**:start() 携带 workspaceDir/openId,子进程注入 BEIDOU_WORKSPACE;DSH_HOME 按空间目录哈希隔离(会话/缓存不跨空间);空间切换 → stop+销毁 View+dsh:restart 通知,渲染层自动重连。实测子进程 env:BEIDOU_WORKSPACE/DSH_HOME 按空间生效
+- **P0-02 统一身份**:BEIDOU_OPEN_ID 注入(与壳 currentOpenId() 同源,实测=jiatianfu 而非硬编码 owner);插件 OPEN_ID 读 env,token 文件路径随之统一
+- **P0-05 状态机**:idle/starting/ready/crashed/stopping;启动失败 SIGKILL 清理(无残留);ready 后 exit 监听清状态(拒绝假健康)+onCrashed 通知;stop 走 SIGTERM→5s 超时→SIGKILL;stderr ring buffer 进错误信息。实测:kill -9 DSH → 意外退出检测 → 通知渲染层 → 自动重启全链通(此前"重启失败"为多残留 Electron 实例的误判;pkill "npx electron" 杀不到 electron 二进制,教训)
+- **P0-07 View 安全边界**:sandbox:true + 精确 origin 导航白名单(仅当次 runtime 的 127.0.0.1:port)+ window-open 拒绝(外链 http(s) 走系统浏览器)+ 权限请求默认拒绝
+- **P0-04 env allowlist**:spawn 只传 PATH/HOME/LANG/TERM/DSH_HOME/DEEPSEEK_API_KEY/BEIDOU_*,不再透传全量 process.env
+- **P0-06 模型配置对齐**:设置页收敛为 API Key 唯一可编辑项,provider/model 只读展示(Profile 固定);探活改 DeepSeek 官方 GET /v1/models(删 Anthropic 端点);key 变更 → DSH stop+View 销毁+通知重连(新 URL 必经 loadURL)
+- **P0-08 执行层门禁**:policy.ts 工具名正向白名单(8 业务+2 身份,越界=TOOL_NOT_ALLOWED 新契约错误码 fail-closed)+ 常驻测试;新增 scripts/check-dsh-tool-boundary.mjs(配置层 CI 断言:dump-config 15 行全禁+插件在+模型固定,已验证通过)
+- **P1-04/P1-09 顺手修**:pruneUndefined 数组元素 undefined 清洗;删 @modelcontextprotocol/sdk、preload onAgentEvent/send、dsh-entry.mjs 死资源
+- 测试:contracts 2(+TOOL_NOT_ALLOWED)/插件 27(+白名单裁决)/桌面 16/core 208;真机:attach→崩溃→自动重启→env 注入全链验证

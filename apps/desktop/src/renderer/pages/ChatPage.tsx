@@ -22,6 +22,17 @@ export default function ChatPage({ theme, modelConfigured, onGoSettings }: { the
   const hostRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"starting" | "ready" | "error">("starting");
   const [error, setError] = useState("");
+  const [nonce, setNonce] = useState(0); // 空间切换/运行时崩溃 → 重新 attach
+
+  // 主进程通知:DSH 已停止(空间切换/配置变更/崩溃)→ 重新拉起并重建内嵌
+  useEffect(() => {
+    const off = window.daw.onDshRestart((payload) => {
+      setState("starting");
+      setError(payload.crashed ? "DSH 运行时异常退出,正在重启…" : "");
+      setNonce((n) => n + 1);
+    });
+    return off;
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -51,7 +62,7 @@ export default function ChatPage({ theme, modelConfigured, onGoSettings }: { the
       ro?.disconnect();
       void window.daw.dshHide();
     };
-  }, []);
+  }, [nonce]);
 
   void theme;
 

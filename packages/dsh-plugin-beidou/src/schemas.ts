@@ -31,7 +31,8 @@ export type BeidouToolValue = BeidouToolResult<Record<string, unknown>>;
  */
 function pruneUndefined<T>(v: T): T {
   if (v === undefined || v === null || typeof v !== "object") return v;
-  if (Array.isArray(v)) return v.map((x) => pruneUndefined(x)) as unknown as T;
+  // 数组:先滤掉 undefined 元素再递归(宿主 cloneJson 对数组内的 undefined 同样拒绝)
+  if (Array.isArray(v)) return v.filter((x) => x !== undefined).map((x) => pruneUndefined(x)) as unknown as T;
   const out: Record<string, unknown> = {};
   for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
     if (val !== undefined) out[k] = pruneUndefined(val);

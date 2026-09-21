@@ -86,31 +86,21 @@ export async function writeConfigAtomic(configPath: string, content: string): Pr
   }
 }
 
-/** 最小连通性测试:Anthropic 协议 /v1/messages,max_tokens=1 */
-export async function testModelEndpoint(
-  baseUrl: string,
-  token: string,
-  model: string,
-): Promise<{ ok: boolean; message: string }> {
-  const url = `${baseUrl.replace(/\/+$/, "")}/v1/messages`;
+/** 连通性测试:DeepSeek 官方 GET /v1/models(P0-06:与 DSH 实际使用的 provider/端点一致,
+ * 消除"探活走 Anthropic 端点、运行走 DeepSeek"的配置幻觉) */
+export async function testModelEndpoint(baseUrl: string, token: string): Promise<{ ok: boolean; message: string }> {
+  const url = `${(baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "").replace(/\/anthropic$/, "")}/v1/models`;
   try {
     const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${token}`,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
+      headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(20_000),
     });
-    if (resp.ok) return { ok: true, message: `连接成功(${resp.status},模型 ${model} 可用)` };
-    const body = await resp.text().catch(() => "");
-    if (resp.status === 401 || resp.status === 403) return { ok: false, message: `API Key 无效(HTTP ${resp.status})` };
-    if (resp.status === 404) return { ok: false, message: "接口不存在(404)——检查 Base URL 是否为 Anthropic 兼容端点" };
-    return { ok: false, message: `HTTP ${resp.status}:${body.slice(0, 200) || "(无响应体)"}` };
+    if (resp.ok) return { ok: true, message: `连接成功(DeepSeek 官方 API,模型列表可达)` };
+    if (resp.status === 401) return { ok: false, message: "API Key 无效(401)" };
+    return { ok: false, message: `HTTP ${resp.status}` };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { ok: false, message: msg.includes("abort") || msg.includes("timeout") ? "连接超时(20s)" : `网络错误:${msg}` };
+    return { ok: false, message: msg.includes("abort") ? "连接超时(20s)" : `网络错误:${msg}` };
   }
 }
+
