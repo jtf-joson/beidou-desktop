@@ -5,6 +5,7 @@
  */
 import type { AuditEvent, EvidenceItem, RouteDecision, SearchHit, SemanticAssets, MetricMirror } from "../types";
 import type { SemanticStore } from "../semantics/store";
+import type { SemanticGraph } from "../semantics/graph";
 import type { GuardPolicy } from "../guard/sql-guard";
 import { guard } from "../guard/sql-guard";
 import { compileMetricSql } from "../compiler/metric-sql";
@@ -51,6 +52,8 @@ export interface ToolContext {
   knowledge?: Array<{ name: string; content: string }>;
   /** 业务 Playbook(空间 playbooks/*.md;按名读取) */
   playbooks?: Array<{ name: string; content: string }>;
+  /** 语义图(资产仓模式装载期物化;缺省时检索不做图扩展) */
+  graph?: SemanticGraph;
   now?: () => string;
 }
 
@@ -97,6 +100,54 @@ function lineageOf(ctx: ToolContext, metric: MetricMirror): string[] {
   return chain;
 }
 
+/**
+ * 把用户/模型传入的语义维度 ID转换为指标平台字段名。
+ * 资产层保留 dimension.bs.* 作为本体稳定 ID，providerDimensions 是平台快照
+ * 中的 dimName；只有在线查询需要后者，离线 SQL 编译仍使用语义 ID。
+ */
+function resolveOnlineDimensions(metric: MetricMirror, requested: string[]): { dims: string[]; invalid: string[]; allowed: string[] } {
+  const semantic = metric.dimensions ?? [];
+  const provider = metric.providerDimensions ?? [];
+  const allowed = [...new Set([...semantic, ...provider])];
+  const invalid: string[] = [];
+  const dims: string[] = [];
+  for (const dim of requested) {
+    const semanticIndex = semantic.indexOf(dim);
+    const isSyntheticTime = /^metric_time__(day|week|month|quarter|year)$/.test(dim);
+    if (semanticIndex >= 0) {
+      dims.push(provider[semanticIndex] ?? dim);
+    } else if (provider.includes(dim) || (isSyntheticTime && (semantic.includes("dimension.bs.metric-time") || semantic.includes("metric_time")))) {
+      dims.push(dim);
+    } else {
+      invalid.push(dim);
+    }
+  }
+  return { dims, invalid, allowed };
+}
+
+/**
+ * 把资产仓中的能力层/知识层挂到诊断结果上。
+ * 这里仅做确定性关联：Playbook 必须显式引用指标 code 或平台指标名，
+ * 知识页按指标显示名检索；不根据相似词臆造业务建议。
+ */
+function assetGuidance(ctx: ToolContext, metric: MetricMirror): {
+  playbooks: Array<{ name: string; content: string }>;
+  knowledge: Array<{ name: string; excerpt: string }>;
+} {
+  const refs = [metric.metricName, metric.code, metric.displayName].filter((x): x is string => !!x).map((x) => x.toLowerCase());
+  const playbooks = (ctx.playbooks ?? [])
+    .filter((p) => refs.some((ref) => p.content.toLowerCase().includes(ref)))
+    .map((p) => ({ name: p.name, content: p.content }));
+  // 知识页既可能写业务显示名,也可能写平台指标名/资产 code;三者都检索并去重。
+  const knowledge = refs
+    .flatMap((ref) => searchKnowledge(ctx.knowledge ?? [], ref))
+    .sort((a, b) => b.score - a.score)
+    .filter((hit, index, all) => all.findIndex((x) => x.name === hit.name) === index)
+    .slice(0, 3)
+    .map((h) => ({ name: h.name, excerpt: h.excerpt }));
+  return { playbooks, knowledge };
+}
+
 export interface ToolSet {
   search_semantics(input: { query: string; limit?: number }): Promise<ToolResponse>;
   query_metrics(input: {
@@ -116,9 +167,65 @@ export interface ToolSet {
     dims?: string[];
     thresholdPct?: number;
   }): Promise<ToolResponse>;
+  trace_lineage(input: { metricName: string }): Promise<ToolResponse>;
   search_knowledge(input: { query: string }): Promise<ToolResponse>;
   read_playbook(input: { name: string }): Promise<ToolResponse>;
   list_ontology(input: { subdomain?: string }): Promise<ToolResponse>;
+}
+
+/**
+ * 图邻居扩展(六步检索第 4 步):top 命中的资产沿语义图带出关联指标。
+ * 只补指标类命中(类/技能等中间节点走一跳再带出同主体/同依赖指标),分数压在
+ * 直接命中之下,保证扩展永不挤掉关键词命中。
+ */
+export function graphExpandHits(
+  hits: SearchHit[],
+  deps: { graph: SemanticGraph; store: SemanticStore; metricsByCode: Map<string, MetricMirror> },
+  opts?: { seedCount?: number; cap?: number },
+): SearchHit[] {
+  const { graph, metricsByCode } = deps;
+  const seen = new Set(hits.filter((h) => h.kind === "metric").map((h) => h.id));
+  const seeds = hits.slice(0, opts?.seedCount ?? 3).map((h) => {
+    if (h.kind === "metric") return deps.store.getMetric(h.id)?.code;
+    if (h.kind === "entity" || h.kind === "model") return h.id;
+    return undefined;
+  }).filter((x): x is string => !!x);
+
+  const out: SearchHit[] = [];
+  let budget = opts?.cap ?? 5;
+  const metricHit = (mirror: MetricMirror, why: string): SearchHit => ({
+    kind: "metric",
+    id: mirror.metricName,
+    name: mirror.metricName,
+    displayName: mirror.displayName,
+    score: 30,
+    why,
+    dimensions: mirror.dimensions,
+    providerDimensions: mirror.providerDimensions,
+    physicalTables: mirror.physicalTables,
+  });
+  const addMetric = (assetId: string, why: string): boolean => {
+    const mirror = metricsByCode.get(assetId);
+    if (!mirror || seen.has(mirror.metricName)) return false;
+    seen.add(mirror.metricName);
+    out.push(metricHit(mirror, why));
+    budget -= 1;
+    return true;
+  };
+
+  for (const seed of seeds) {
+    if (budget <= 0) break;
+    for (const { edge, other } of graph.neighbors(seed)) {
+      if (budget <= 0) break;
+      if (addMetric(other, `图扩展(${edge.type}:${seed})`)) continue;
+      // 非指标中间节点(类/技能/Playbook)再走一跳,带出同主体/同依赖指标
+      for (const hop2 of graph.neighbors(other)) {
+        if (budget <= 0) break;
+        addMetric(hop2.other, `图扩展(经 ${other})`);
+      }
+    }
+  }
+  return out;
 }
 
 export function createTools(ctx: ToolContext): ToolSet {
@@ -142,6 +249,15 @@ export function createTools(ctx: ToolContext): ToolSet {
     );
     if (!compileR.ok) {
       await audit(ctx, "tool_result", `口径编译失败:${metricName}`, compileR.error);
+      const platformOnly = metric.type === "DERIVED" && compileR.error.code === "NO_FORMULA";
+      if (platformOnly) {
+        return {
+          ok: false,
+          text: "",
+          evidence: [],
+          error: `指标已在语义资产中登记,但属于${metric.displayName ?? metricName}派生指标;环比/同比周期计算必须调用指标平台,当前指标平台查询未配置,因此拒绝使用基础指标公式替代。`,
+        };
+      }
       return { ok: false, text: "", evidence: [], error: `口径编译失败(${compileR.error.code}):${compileR.error.message};该指标暂不支持自动下钻,请向用户说明并建议人工路径` };
     }
     const runR = await runGuardedSql(ctx, compileR.value.sql);
@@ -230,6 +346,11 @@ export function createTools(ctx: ToolContext): ToolSet {
         }
       }
       hits.sort((a, b) => b.score - a.score);
+      // 图邻居扩展:top 命中沿语义图带出关联指标(未装载图时跳过)
+      if (ctx.graph) {
+        hits.push(...graphExpandHits(hits, { graph: ctx.graph, store: ctx.store, metricsByCode: ctx.metricsByCode }));
+        hits.sort((a, b) => b.score - a.score);
+      }
       const route = decideRoute({
         hits,
         config: ctx.routerConfig,
@@ -247,19 +368,32 @@ export function createTools(ctx: ToolContext): ToolSet {
 
     async query_metrics({ metricName, dims, timeRange }) {
       await audit(ctx, "tool_call", `查指标:${metricName}`, { dims, timeRange });
+      const metric = ctx.store.getMetric(metricName);
+      if (!metric) {
+        await audit(ctx, "tool_result", `指标资产校验失败:${metricName}`);
+        return { ok: false, text: "", evidence: [], error: `指标不存在于当前 beidou-workspace 资产:${metricName};请先调用 search_semantics 或使用资产中的 metricName` };
+      }
+      const requestedDims = dims ?? [];
+      const resolved = resolveOnlineDimensions(metric, requestedDims);
+      if (resolved.invalid.length > 0) {
+        await audit(ctx, "tool_result", `维度资产校验失败:${metricName}`, { invalidDims: resolved.invalid, allowedDims: resolved.allowed });
+        return { ok: false, text: "", evidence: [], error: `维度不属于指标 ${metric.displayName ?? metricName}:${resolved.invalid.join(",")};可用维度:${resolved.allowed.join(",") || "无"}` };
+      }
       if (ctx.metricOnline && ctx.queryMetricsOnline) {
-        const r = await ctx.queryMetricsOnline({ metricName, dims, timeRange });
+        const r = await ctx.queryMetricsOnline({ metricName, dims: resolved.dims, timeRange });
         if (r.ok) {
-          const metric = ctx.store.getMetric(metricName);
           const evidence = buildEvidenceItem({
             kind: "metric_query",
             title: metric?.displayName ?? metricName,
             metricName,
             caliber: metric?.businessCaliber,
+            lineage: lineageOf(ctx, metric),
+            physicalTables: metric?.physicalTables,
             rows: r.value.rows.length,
             semanticVersion: ctx.semanticVersion,
           });
-          return { ok: true, text: JSON.stringify({ metric: metricName, rows: r.value.rows, note: r.value.note }, null, 1), evidence: [evidence] };
+          await audit(ctx, "tool_result", `在线指标查询完成:${metricName}(${r.value.rows.length} 行)`, { dims: requestedDims, timeRange, source: "anymetrics-semantic" });
+          return { ok: true, text: JSON.stringify({ metric: metricName, displayName: metric.displayName, caliber: metric.businessCaliber, dimensions: metric.dimensions, providerDimensions: metric.providerDimensions, rows: r.value.rows, note: r.value.note, source: "AnyMetrics semantic API" }, null, 1), evidence: [evidence] };
         }
         // 在线失败 → 降级口径编译(不静默编数)
         await audit(ctx, "tool_result", `在线指标查询失败,降级口径编译:${r.error}`);
@@ -326,8 +460,15 @@ export function createTools(ctx: ToolContext): ToolSet {
               .flatMap((m) => m.dimensions);
             const pool = modelDims.length > 0 ? modelDims : metric.dimensions;
             return [...new Set(pool)].slice(0, modelDims.length > 0 ? modelDims.length : 4);
-          })();
+      })();
       const runQuery = async (qs: string[], range: TimeWindow) => {
+        if (ctx.metricOnline && ctx.queryMetricsOnline) {
+          const resolved = resolveOnlineDimensions(metric, qs);
+          if (resolved.invalid.length > 0) return { ok: false as const, error: `维度不属于指标:${resolved.invalid.join(",")}` };
+          const online = await ctx.queryMetricsOnline({ metricName, dims: resolved.dims, timeRange: range });
+          if (!online.ok) return { ok: false as const, error: online.error };
+          return { ok: true as const, rows: online.value.rows };
+        }
         const compileR = compileMetricSql(
           { metric, dims: qs, timeRange: range, maxRow: ctx.guardPolicy.maxRow },
           {
@@ -347,6 +488,7 @@ export function createTools(ctx: ToolContext): ToolSet {
         return { ok: false, text: "", evidence: [], error: `诊断失败:${r.error.message}` };
       }
       const d = r.value;
+      const guidance = assetGuidance(ctx, metric);
       const evidence = buildEvidenceItem({
         kind: "metric_query",
         title: `诊断:${metric.displayName ?? metricName}${ctx.dataSource === "mock" ? "(演示数据)" : ""}`,
@@ -368,10 +510,42 @@ export function createTools(ctx: ToolContext): ToolSet {
           totals: d.totals,
           anomaly: d.anomaly,
           attributions: d.attributions,
+          assetGuidance: guidance,
           note: "诊断数值为确定性计算(贡献=维度值变化/基期总量);请基于以上结构化结果写诊断报告:结论→异常与方向→Top 贡献维度与值→业务建议(引用知识库与 Playbook 如有)",
         }, null, 1),
         evidence: [evidence],
       };
+    },
+
+    async trace_lineage({ metricName }) {
+      await audit(ctx, "tool_call", `追踪指标血缘:${metricName}`);
+      const metric = ctx.store.getMetric(metricName);
+      if (!metric) return { ok: false, text: "", evidence: [], error: `指标不存在:${metricName};请先 search_semantics` };
+      const dataset = metric.datasetName ? ctx.store.getDataset(metric.datasetName) : undefined;
+      const dimensions = metric.dimensions.map((dimension) => ({
+        dimension,
+        providerDimension: metric.providerDimensions?.[metric.dimensions.indexOf(dimension)] ?? dimension,
+        details: metric.dimensionDetails?.find((d) => d.name === (metric.providerDimensions?.[metric.dimensions.indexOf(dimension)] ?? dimension)),
+        binding: ctx.store.resolveDimBinding(dimension),
+      }));
+      const guidance = assetGuidance(ctx, metric);
+      const relatedMetrics = ctx.assets.metrics
+        .filter((candidate) => candidate.metricName !== metric.metricName && candidate.physicalTables.some((table) => metric.physicalTables.includes(table)))
+        .map((candidate) => ({ metricName: candidate.metricName, displayName: candidate.displayName, reason: "共享物理表" }));
+      const affectedDatasets = ctx.assets.datasets
+        .filter((candidate) => candidate.metrics.includes(metric.metricName) || candidate.physicalTables.some((table) => metric.physicalTables.includes(table)))
+        .map((candidate) => candidate.datasetName);
+      const lineage = {
+        metric: { name: metric.metricName, code: metric.code, displayName: metric.displayName, caliber: metric.caliber, physicalTables: metric.physicalTables },
+        dataset: dataset ? { name: dataset.datasetName, physicalTables: dataset.physicalTables, columns: dataset.columns } : null,
+        dimensions,
+        dependentMetrics: metric.refMetricCodes.map((code) => ctx.metricsByCode.get(code)?.metricName ?? code),
+        guidance: { playbooks: guidance.playbooks.map((p) => p.name), knowledge: guidance.knowledge.map((k) => k.name) },
+        impact: { relatedMetrics, affectedDatasets, affectedPlaybooks: guidance.playbooks.map((p) => p.name) },
+        semanticVersion: ctx.semanticVersion,
+      };
+      const evidence = buildEvidenceItem({ kind: "semantic_search", title: `血缘:${metric.displayName ?? metricName}`, metricName, physicalTables: metric.physicalTables, lineage: lineageOf(ctx, metric), semanticVersion: ctx.semanticVersion });
+      return { ok: true, text: JSON.stringify(lineage, null, 1), evidence: [evidence] };
     },
 
     async search_knowledge({ query }) {

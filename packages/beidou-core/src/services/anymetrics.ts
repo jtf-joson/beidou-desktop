@@ -7,6 +7,7 @@ import { err, ok, type Result } from "../types";
 
 export interface AnyMetricsConfig {
   baseUrl: string;
+  semanticBaseUrl?: string;
   tenantId: string;
   authValue: string;
   authType?: string;
@@ -37,6 +38,14 @@ export interface AnyMetricsClient {
   metricTree(): Promise<Result<unknown>>;
   metricDetail(names: string[]): Promise<Result<Array<Record<string, unknown>>>>;
   dimensions(names: string[]): Promise<Result<Record<string, Array<Record<string, unknown>>>>>;
+  queryMetrics(input: { metricName: string; dimensions?: string[]; filters?: string[]; timeConstraint?: string; limit?: number; offset?: number }): Promise<Result<{ rows: Array<Record<string, unknown>>; note?: string }>>;
+}
+
+function columnarRows(table: Record<string, unknown> | undefined): Array<Record<string, unknown>> {
+  const columns = (table?.columns ?? {}) as Record<string, Array<{ value?: unknown }>>;
+  const names = Object.keys(columns);
+  const size = names.reduce((n, key) => Math.max(n, columns[key]?.length ?? 0), 0);
+  return Array.from({ length: size }, (_, i) => Object.fromEntries(names.map((key) => [key, columns[key]?.[i]?.value ?? null])));
 }
 
 export function createAnyMetricsClient(config: AnyMetricsConfig, deps: AnyMetricsDeps): AnyMetricsClient {
@@ -117,6 +126,22 @@ export function createAnyMetricsClient(config: AnyMetricsConfig, deps: AnyMetric
       return get<Record<string, Array<Record<string, unknown>>>>("/anymetrics/api/v1/metrics/dimensionAll", [
         ...names.map((n) => ["metricNames", n] as [string, string]),
       ]);
+    },
+    async queryMetrics({ metricName, dimensions = [], filters = [], timeConstraint, limit = 100, offset = 1 }) {
+      const semanticBase = config.semanticBaseUrl ?? base;
+      const url = `${semanticBase.replace(/\/+$/, "")}/semantic/api/v1.1/metrics/query`;
+      const body = { metrics: [metricName], dimensions, filters, ...(timeConstraint ? { timeConstraint } : {}), limit, offset, queryResultType: "DATA" };
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), config.timeoutMs ?? 60_000);
+        const resp = await deps.fetchFn(url, { method: "POST", headers: { "Content-Type": "application/json", "tenant-id": config.tenantId, "auth-type": config.authType ?? "UID", "auth-value": config.authValue, Accept: "application/json" }, body: JSON.stringify(body), signal: controller.signal });
+        clearTimeout(timer);
+        const env = (await resp.json()) as Envelope<{ table?: Record<string, unknown> }>;
+        if (!resp.ok || (env.code !== undefined && env.code !== null && env.code !== 200 && env.code !== "200")) return err("ANYMETRICS_QUERY", env.errorMsg ?? env.message ?? `指标查询失败:${env.code ?? resp.status}`);
+        return ok({ rows: columnarRows(env.data?.table), note: "语义层指标平台数据" });
+      } catch (e) {
+        return err("ANYMETRICS_QUERY_NETWORK", `指标查询网络错误:${e instanceof Error ? e.message : String(e)}`);
+      }
     },
   };
 }

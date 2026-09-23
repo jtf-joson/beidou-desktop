@@ -98,3 +98,43 @@ describe("buildStore 语义检索", () => {
     expect(store.getMetric("nope")).toBeUndefined();
   });
 });
+
+describe("中文长句检索(2-gram 词袋)", () => {
+  const assets: SemanticAssets = {
+    metrics: [
+      { metricName: "store_order_cnt", displayName: "门店订单数", type: "ATOMIC", categoryPath: [], physicalTables: [], dimensions: [], refMetricCodes: [] },
+      { metricName: "store_sales", displayName: "门店销售额", type: "ATOMIC", categoryPath: [], physicalTables: [], dimensions: [], refMetricCodes: [] },
+    ],
+    datasets: [], glossary: [], columnBindings: [], tableToMetrics: {}, importWarnings: [],
+  };
+  const store = buildStore(assets);
+
+  it("无空格长句「上海市A级门店上月订单数」能命中「门店订单数」(修复前整词不命中)", () => {
+    const hits = store.search("上海市A级门店上月订单数");
+    expect(hits.some((h) => h.kind === "metric" && h.id === "store_order_cnt")).toBe(true);
+  });
+
+  it("bigram 不应让无关指标反超直接命中", () => {
+    const hits = store.search("门店订单数");
+    expect(hits[0]?.id).toBe("store_order_cnt");
+  });
+});
+
+describe("术语引用 boost(metricRefs 打通 glossaryBoost)", () => {
+  const assets: SemanticAssets = {
+    metrics: [
+      { metricName: "aftersale_store_complaint_rate", displayName: "售后门店投诉率", type: "COMPOSITE", categoryPath: [], physicalTables: [], dimensions: [], refMetricCodes: [] },
+    ],
+    datasets: [],
+    glossary: [{ term: "口径指引", synonyms: ["指引"], metricRefs: ["aftersale_store_complaint_rate"], note: "口径以平台为准" }],
+    columnBindings: [], tableToMetrics: {}, importWarnings: [],
+  };
+  const store = buildStore(assets);
+
+  it("命中术语别名时,被引用指标随之加分命中", () => {
+    const hits = store.search("指引是什么口径");
+    expect(hits.some((h) => h.kind === "term" && h.id === "口径指引")).toBe(true);
+    const m = hits.find((h) => h.kind === "metric" && h.id === "aftersale_store_complaint_rate");
+    expect(m?.why).toContain("术语表");
+  });
+});

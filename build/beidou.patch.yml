@@ -1,0 +1,57 @@
+# 北斗work 桌面 patch 层(叠加在 dsh-desktop.patch.yml 之后)
+# 单一权威源:禁用 dsh-base 全部 15 个内置模型工具行 + 插入北斗 Host 插件 +
+# 模型使用公司私有网关占位配置，不连接官方 DeepSeek。
+- insert:
+    - id: beidou-dsh-host
+      name: beidou-dsh-host
+    - id: beidou-dsh-client
+      name: beidou-dsh-client
+
+# 禁用上游桌面品牌占用(single slot 唯一占用者),由 beidou-dsh-client 接管品牌与导航
+- id: dsh-desktop-client-ui
+  disabled: true
+
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: tool-web
+  disabled: true
+
+# 默认模型固定为公司私有模型适配器；网关地址和凭据由部署环境注入。
+- id: agent-default-model
+  config:
+    provider: beidou-private
+    model: company-default
+
+# 方案 §14:普通用户隐藏非北斗上游能力(PPT/Preset 导入导出/插件市场占位)
+- id: dsh-ppt-composer
+  disabled: true
+- id: dsh-desktop-preset-transfer
+  disabled: true
+- id: dsh-desktop-market-installer
+  disabled: true

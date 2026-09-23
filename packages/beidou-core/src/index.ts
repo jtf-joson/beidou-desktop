@@ -2,6 +2,7 @@
 export * from "./types";
 export { guard, type GuardPolicy, type GuardResult } from "./guard/sql-guard";
 export { buildStore, type SemanticStore } from "./semantics/store";
+export { buildSemanticGraph, type SemanticGraph, type SemanticGraphEdge, type SemanticEdgeType, type GraphSource } from "./semantics/graph";
 export { importBeidou } from "./semantics/importer";
 export { compileMetricSql } from "./compiler/metric-sql";
 export { compileFormula, compileFilterExpr } from "./compiler/dsl";

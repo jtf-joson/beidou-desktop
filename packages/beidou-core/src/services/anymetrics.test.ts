@@ -87,4 +87,20 @@ describe("createAnyMetricsClient", () => {
     expect(r.ok).toBe(false);
     expect(n).toBe(3);
   });
+
+  it("queryMetrics 调用语义层并把列式响应转换为行式数据", async () => {
+    let captured = "";
+    const client = createAnyMetricsClient(
+      { baseUrl: "https://anymetrics.example", semanticBaseUrl: "https://semantic.example", tenantId: "tn_1", authValue: "u1" },
+      { fetchFn: (async (url: any, init: any) => {
+        captured = `${String(url)} ${String(init.body)}`;
+        return new Response(okEnvelope({ table: { columns: { metric_time__month: [{ value: "2026-01-01" }], sales: [{ value: 12 }] } } }));
+      }) as typeof fetch },
+    );
+    const r = await client.queryMetrics({ metricName: "sales", dimensions: ["metric_time__month"] });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.rows).toEqual([{ "metric_time__month": "2026-01-01", sales: 12 }]);
+    expect(captured).toContain("https://semantic.example/semantic/api/v1.1/metrics/query");
+    expect(captured).toContain('"metrics":["sales"]');
+  });
 });

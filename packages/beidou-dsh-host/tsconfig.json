@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "ES2022"
+    ],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@beidou/core/src/*": [
+        "../beidou-core/src/*"
+      ],
+      "@beidou/core": [
+        "../beidou-core/src/index.ts"
+      ],
+      "@beidou/contracts/src/*": [
+        "../domain-contracts/src/*"
+      ],
+      "@beidou/contracts": [
+        "../domain-contracts/src/index.ts"
+      ],
+      "@beidou/ontology-schema/src/*": [
+        "../ontology-schema/src/*"
+      ]
+    },
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "src",
+    "../beidou-core/src",
+    "../domain-contracts/src",
+    "../ontology-schema/src"
+  ],
+  "exclude": [
+    "../**/*.test.ts",
+    "../**/*.test.tsx"
+  ]
+}

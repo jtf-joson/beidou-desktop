@@ -1,6 +1,0 @@
-# 空间成员与角色(admin/engineer/analyst/viewer)
-# 未列出的登录用户按 default_role 处理;角色决定可见菜单与操作权限(双层防线,工具层还会校验)
-default_role: viewer
-members:
-  - username: {{username}}
-    role: admin

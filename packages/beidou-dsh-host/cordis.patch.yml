@@ -1,0 +1,3 @@
+# beidou-dsh-host bundle patch(空层:桌面 build/beidou.patch.yml 负责实际的
+# 工具边界禁用与本插件插入;此文件仅满足 generations 机制对 bundle 的格式要求)
+[]

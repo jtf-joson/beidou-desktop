@@ -52,3 +52,12 @@ describe("searchKnowledge(标题/小节加权 + 段落级摘录)", () => {
     expect(searchKnowledge(docs, "")).toEqual([]);
   });
 });
+
+describe("中文长句 2-gram 命中", () => {
+  const docs = [{ name: "store-grading", content: "---\ntitle: 门店分级规范\n---\n\n# 门店分级规范\n\nA 级:年销售额 ≥ 5000 万。" }];
+  it("长句问题(无空格整段中文)能命中标题关键词(修复前整词 token 不命中)", () => {
+    const hits = searchKnowledge(docs, "门店分级规范里A级门店的标准是什么");
+    expect(hits[0]?.name).toBe("store-grading");
+    expect(hits[0]?.matchedHeadings).toContain("门店分级规范");
+  });
+});

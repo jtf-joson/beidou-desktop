@@ -1,0 +1,23 @@
+{
+  "name": "beidou-dsh-host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "北斗work 的 DeepSeek Harness 插件(Phase 1:空壳 + ping 工具;工具全量接线在 Phase 3/4)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "node ../../scripts/build-beidou-host.mjs",
+    "prepare": "node ../../scripts/build-beidou-host.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-tools": "0.1.5-rc.2",
+    "mysql2": "^3.11.0",
+    "yaml": "2.5.0"
+  },
+  "type": "module",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

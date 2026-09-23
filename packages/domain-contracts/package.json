@@ -7,5 +7,11 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
-  }
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./src/*": "./src/*",
+    "./*": "./src/*"
+  },
+  "dependencies": {}
 }

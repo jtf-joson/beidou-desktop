@@ -16,5 +16,10 @@
   "devDependencies": {
     "@vitest/coverage-v8": "2.1.9",
     "vitest": "2.1.9"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./src/*": "./src/*",
+    "./*": "./src/*"
   }
 }

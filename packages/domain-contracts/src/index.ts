@@ -50,3 +50,18 @@ export interface AuditEventV2 {
   durationMs?: number;
   resultCode: "OK" | ErrorCode;
 }
+
+export type {
+  AnalysisFilter,
+  AnalysisEvidence,
+  AnalysisSeries,
+  AnalysisResultBase,
+  MetricAnalysisResult,
+  ChartAnalysisResult,
+  TableAnalysisResult,
+  DiagnosisAnalysisResult,
+  ReportAnalysisResult,
+  AnalysisResult,
+  AnalysisResultEnvelope,
+  AnalysisResultType,
+} from "./analysis-result";

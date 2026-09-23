@@ -1,0 +1,28 @@
+name: 我的数据工作台
+asset_bundle: asset-bundle
+asset_repo:
+  root: asset-repo
+  workspace: aftersale-service
+  # 启动时仅执行 git pull --ff-only；失败则保留当前本地资产并记录告警
+  auto_pull: true
+model:
+  provider: beidou-private
+  base_url: "" # 由公司私有模型部署配置注入
+  auth_token: "" # 由公司私有模型部署配置注入
+  model: company-default
+starrocks:
+  mock: true
+  host: ""
+  port: 9030
+  user: ""
+  database: ""
+  timeout_sec: 60
+anymetrics:
+  host: "https://dip-mp-anymetrics-icm.inner.chj.cloud"
+  semantic_host: "https://dip-mp-semantic-icm.inner.chj.cloud"
+  tenant_id: "tn_1468"
+  auth_type: "UID"
+  auth_value_env: "BEIDOU_ANYMETRICS_AUTH_VALUE"
+guard:
+  max_row: 200
+  sensitive_columns: []

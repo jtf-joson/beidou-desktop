@@ -16,5 +16,10 @@
   "devDependencies": {
     "vitest": "2.1.9",
     "@types/node": "22.5.0"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./src/*": "./src/*",
+    "./*": "./src/*"
   }
 }

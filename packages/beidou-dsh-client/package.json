@@ -1,0 +1,10 @@
+{
+  "name": "beidou-dsh-client",
+  "version": "0.1.0",
+  "description": "北斗work 客户端定制:品牌与业务导航(方案 V1.0 §13 最小集)",
+  "private": true,
+  "type": "module",
+  "main": "./index.js",
+  "exports": { ".": "./index.js", "./client": "./client.js", "./package.json": "./package.json" },
+  "dsh": { "client": { "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-renderer", "@deepseek-ai/dsh-client-ui-sidebar"], "platform": "web" } }
+}

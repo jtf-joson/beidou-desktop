@@ -33,6 +33,6 @@ describe("system prompt 契约(CODE_STANDARDS:文案与实现不漂移)", () => 
 
   it("TOOL_NAMES 与工具层名称一致", () => {
     expect(TOOL_NAMES).toContain("search_semantics");
-    expect(TOOL_NAMES).toHaveLength(7);
+    expect(TOOL_NAMES).toHaveLength(9);
   });
 });

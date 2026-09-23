@@ -1,11 +1,39 @@
 node_modules/
 out/
 dist/
-*.local
+dist-dev/
 .DS_Store
+*.log
 coverage/
-workspace/
+/doc/
+/deliverables/
+build/icon.iconset/
+build/*.iconset/
+build/app-icon.iconset/
+build/icon-1024.png
 .env
-release/
-.tmp/
-packages/dsh-plugin-beidou/dist/
+.env.*
+!.env.example
+.coaligne/
+.coaligneignore
+
+
+# Python bytecode from release-note scripts / tests
+__pycache__/
+*.pyc
+
+# Native recovery UI smoke-test output
+/artifacts/recovery-ui/
+
+# Local-only design docs
+docs/plugin-management.zh.md
+docs/default-capabilities.zh.md
+docs/mobile-connection-latency.zh.md
+
+# Local pnpm content store
+/.pnpm-store/
+
+# beidou-workspace is a sibling Git repository; generated copies/bundles stay local.
+/build/asset-bundles/
+/build/beidou-workspace-seed/asset-bundle/
+/build/beidou-workspace-seed/asset-repo/

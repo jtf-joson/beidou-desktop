@@ -59,6 +59,10 @@ export interface MetricMirror {
   physicalTables: string[];
   /** 可用维度 dimName 列表 */
   dimensions: string[];
+  /** 指标平台查询字段名；dimensions 保留资产语义 ID，二者一一对应。 */
+  providerDimensions?: string[];
+  /** 平台维度展示/来源信息，用于指标详情与证据链。 */
+  dimensionDetails?: Array<{ name: string; displayName?: string; datasetName?: string }>;
   /** DERIVED/COMPOSITE 引用的指标 code */
   refMetricCodes: string[];
   /** 口径(ATOMIC 有 formula/filters;DERIVED 有 refMetricCode) */
@@ -93,11 +97,21 @@ export interface ColumnBinding {
   physicalColumn: string;
 }
 
+export interface DimensionBinding {
+  dimension: string;
+  dimDataset: string;
+  dimColumn: string;
+  physicalTable: string;
+  physicalColumn: string;
+}
+
 export interface SemanticAssets {
   metrics: MetricMirror[];
   datasets: DatasetCard[];
   glossary: GlossaryTerm[];
   columnBindings: ColumnBinding[];
+  /** 业务维度名 → 维表列,用于安全生成跨数据集 JOIN */
+  dimensionBindings?: DimensionBinding[];
   /** 物理表 → 引用它的指标(反向索引) */
   tableToMetrics: Record<string, string[]>;
   importWarnings: string[];
@@ -120,6 +134,7 @@ export interface SearchHit {
   why: string;
   /** 附带:指标命中时给维度与物理表,便于 Agent 直接决策 */
   dimensions?: string[];
+  providerDimensions?: string[];
   physicalTables?: string[];
 }
 

@@ -1,8 +1,0 @@
-# 空间资产隔离范围(semantics/scope.yaml;不配置或留空 = 空间可见导入全集)
-# 多条件并集生效;资产层过滤 + 查询白名单随之收紧
-# metricNames: [sum_highway_adas_odometer_days]
-# categoryPaths:
-#   - [智能驾驶]
-#   - [智能空间, 蓝牙钥匙]
-# datasets: [dm_vom_adas_total_odometer]
-# tables: [default_catalog.dw.dws_vehicle_adas_drive_index_df]

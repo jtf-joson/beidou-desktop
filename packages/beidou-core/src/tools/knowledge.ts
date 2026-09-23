@@ -18,7 +18,12 @@ export interface KnowledgeHit {
 const MAX_EXCERPT = 400;
 
 export function searchKnowledge(docs: KnowledgeDoc[], query: string): KnowledgeHit[] {
-  const terms = query.toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
+  // 空白切词 + 中文连续段 2-gram:长句问题(「…标准是什么」)也能命中标题关键词
+  const words = query.toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
+  const terms = [...new Set(words.flatMap((w) => {
+    const segs = w.match(/[一-鿿]{2,}/g) ?? [];
+    return [w, ...segs.flatMap((seg) => Array.from({ length: seg.length - 1 }, (_, i) => seg.slice(i, i + 2)))];
+  }))];
   if (terms.length === 0 || docs.length === 0) return [];
 
   const hits: KnowledgeHit[] = [];

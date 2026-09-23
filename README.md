@@ -1,52 +1,130 @@
-# 北斗work
+<h1 align="center">
+  <img src="docs/images/readme-logo-black-v020.png" width="64" alt="DSH Desktop logo" valign="middle" />
+  DSH Desktop
+</h1>
 
-仿腾讯云 DataBuddy 的桌面端数据智能体工作台:语义配置 + 技能/插件 + 智能问数(指标 → 口径一致下钻 → 无指标明细分析)。
+<p align="center">
+  A local-first, cross-platform desktop app for
+  <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>.
+</p>
 
-- Monorepo(npm workspaces):`packages/beidou-core`(核心能力,零依赖)/ `packages/domain-contracts`(协议层)/ `apps/desktop`(Electron 壳);后续 `packages/ontology-schema`、`packages/dsh-plugin-beidou`
-- 设计文档:`docs/SPEC.md`(自问自答 spec)、`docs/ARCHITECTURE.md`、`docs/CODE_STANDARDS.md`、`docs/plans/poc-dsh-plugin-v2.md`(PoC 基线 V2.1)
-- 参考:`~/databuddy/DataBuddy产品与技术架构详解.md` 等研究文档
+<p align="center">
+  <a href="README.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ru.md">Русский</a> · <a href="README.es.md">Español</a> · <a href="README.pt.md">Português</a>
+</p>
 
-## 技术栈
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-171513.svg" /></a>
+  <img alt="macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-171513.svg" />
+  <img alt="Windows" src="https://img.shields.io/badge/Windows-x64-171513.svg" />
+</p>
 
-Electron + React + TypeScript | Claude Agent SDK + DeepSeek(Anthropic 兼容端点)| StarRocks(mysql2 只读)| 北斗 AnyMetrics 导出
+![DSH Desktop overview with portable presets, model providers, phone control, and editable PPT generation](docs/images/dsh-desktop-hero-v021.png)
 
-## 快速开始
+<p align="center"><strong>Use official DeepSeek models or mainstream third-party providers, manage portable Agent presets, continue Harness sessions from your phone, and turn source material into editable PPTX decks.</strong></p>
 
-```bash
-npm install
-npm install
-npm test            # 全 workspace 测试(core 183 + contracts + desktop e2e)
-npm run desktop:dev # 桌面应用开发
-npm run desktop:dist # dmg 打包
+DSH Desktop packages the local DeepSeek Harness experience as an installed desktop application. It starts Harness automatically, keeps profiles, plugins, workspaces, model settings, and sessions outside the application directory, and opens the full Harness interface as soon as the local runtime is ready.
+
+> [!IMPORTANT]
+> DSH Desktop is an early preview built on the rapidly evolving `@deepseek-ai/dsh@0.1.5-rc.2`. macOS releases are code-signed and notarized by Apple. Windows x64 installers are code-signed; Windows security warnings may still decrease gradually as the publisher builds download and installation reputation.
+
+## Download
+
+We offer stable and preview releases: download the **stable release**, recommended for everyday use, from our [official website](https://www.dshdesktop.com/#download). To try a **preview release**, choose a version marked **Pre-release** on [GitHub Releases](https://github.com/dataelement/dsh-desktop/releases).
+
+Preview releases include our newest features and closely track the latest official DeepSeek Harness versions. They may be incompatible with community plugins and are **not recommended for general users**. Early adopters are welcome to try them and share feedback in our community; we roll out updates to the wider community only after validation by early adopters.
+
+Installed builds check for updates shortly after startup and every six hours. When a new version is available, DSH Desktop asks before downloading it; installation begins only after you choose **Restart and install**. You can also check manually from the application menu or skip one version without hiding future releases.
+
+## Community
+
+<p align="center">
+  Scan the QR code below with WeChat to join the DSH Desktop community group.<br />
+  <img src="docs/images/wechat-group-20260815.png" width="220" alt="DSH Desktop WeChat group QR code" /><br />
+  Prefer Discord? <a href="https://discord.gg/7Xgf3qe3Qp">Join the DSH Desktop Discord community</a>.
+</p>
+
+## What DSH Desktop adds
+
+DeepSeek Harness already provides the Agent runtime and Web UI. DSH Desktop adds the native host capabilities needed for a practical desktop product:
+
+- Starts and stops Harness without requiring a separate CLI or browser tab
+- Uses the native system directory picker to add and manage project workspaces
+- Supports official DeepSeek models and mainstream third-party model providers
+- Imports and exports complete custom Agent presets as portable [`.dshpreset` packages](docs/preset-packages.md), with conflict checks and a trust warning before installation
+- Turns source material into editable PPTX decks through the built-in PPT mode
+- Preserves profiles, plugins, workspaces, sessions, and model settings across app upgrades
+- Detects startup and frontend plugin failures, keeps diagnostics in `harness.log`, and offers guided recovery actions
+- Provides a non-destructive Safe Mode that temporarily blocks third-party plugins
+- Lets a paired phone continue sessions over the local network or an optional temporary public tunnel
+- Checks for desktop updates and keeps download and installation under user control
+- Adapts native menus, titlebar behavior, window focus, theme, and application branding for macOS and Windows
+
+## PPT generation
+
+Enable the **PPT** button, choose a template, and describe the deck you need. The built-in catalog includes **16 templates and 192 layouts** with editable PPTX output. Previews use English; decks can use English or Chinese, with corresponding font settings. Preview language does not determine output language.
+
+PPT is preinstalled, and its automatic instructions apply only to sessions where the PPT button is enabled. See the [PPT runtime guide](packages/ppt-runtime/README.md) for templates, validation, and source acknowledgments.
+
+## Phone access
+
+Choose **Connect Phone…** from the `Harness` menu and scan the pairing code. The desktop asks you to approve the connection before the phone can access sessions.
+
+Harness itself remains on a random `127.0.0.1` port. Phone access uses a separate paired bridge. It can stay on the local network or, when you choose remote access, use a temporary Cloudflare Quick Tunnel. Disconnecting the phone from the desktop invalidates the mobile session.
+
+If Cloudflare fails to start, the app tries Pinggy. If a Cloudflare pairing link appears but your phone cannot open it, choose **Can’t open? Try another link** to switch to Pinggy.
+
+## Safe Mode and recovery
+
+If a third-party plugin interferes with startup or rendering, DSH Desktop can identify the implicated plugin from runtime and frontend evidence and open a guided recovery surface.
+
+Choose **Restart as Safe Mode…** from the `Harness` menu to start an isolated profile containing only official core bundles. The Agent, sessions, model settings, and workspaces remain available while third-party plugins from the normal profile stay blocked. You can remove selected plugins or return to a normal launch from the Safe Mode banner.
+
+Recovery screens check for compatible plugin updates. When available, you can upgrade an affected plugin; Safe Mode also offers batch upgrades. For help, hover over **WeChat group** to display its QR code, or click **Discord** to open the community.
+
+If the normal interface cannot be reached, start DSH Desktop with `--safe-mode`. On macOS:
+
+```sh
+open -a "DSH Desktop" --args --safe-mode
 ```
 
-首次启动会在默认工作区(userData/workspace)生成模板:`config.yaml`、`semantics/glossary.yaml`、`.claude/skills/`(三个内置技能)。
+## Local data and security
 
-## 配置三步
+- The Harness Web UI is served only on a random loopback port.
+- The renderer has no Node.js privileges and uses context isolation and sandboxing.
+- Webviews, untrusted in-app navigation, and unexpected permission requests are blocked.
+- External web links open in the system browser.
+- User profiles and sessions live under Electron's per-user application data directory, not inside the installed app.
+- Phone access requires a short-lived pairing token and explicit desktop approval.
 
-1. **导入语义资产**:把北斗导出(`metrics.json / details.json / dimensions.json / tree.json / lineage_summary.json / physical_tables.json`,即 `~/beidou-metrics-export/output/adss/` 下的文件)复制到工作区 `semantics/import/`。
-2. **插件页**编辑 `config.yaml`:模型(DeepSeek key,建议环境变量 `DEEPSEEK_API_KEY`)、StarRocks 只读连接;点「连接测试」。
-3. **对话页**提问。未配模型时为演示模式(确定性管线,全链路可用);未配 StarRocks 时指标/明细查询会明确报「未配置」——fail-closed,不编数。
+## Platform support
 
-## 核心机制(与 DataBuddy 对齐)
+| Platform | Distribution | Status |
+| --- | --- | --- |
+| macOS Apple Silicon | Signed and notarized DMG/ZIP | Supported |
+| macOS Intel | Signed and notarized DMG/ZIP | Supported |
+| Windows x64 | Code-signed NSIS installer | Supported |
+| Windows ARM64 | — | Not currently supported |
+| Linux | — | Not currently supported |
 
-| 机制 | 实现 |
-|---|---|
-| 语义路由 | system prompt 协议 + `search_semantics` 工具(同义词/中文反包含/打分),路由策略纯函数可测 |
-| 口径一致下钻 | `MetricSqlCompiler`:平台 caliber 公式 AST + 过滤 DSL + 列映射 → SQL,**LLM 不写 SQL** |
-| 无指标明细 | `buildExploreSql`:结构化参数(白名单表/列/聚合)拼装 SQL |
-| SQL 护栏 | `sql-guard` token 级静态分析:单语句/只读首词/关键词黑名单/表白名单/强制 LIMIT/敏感列;数据库侧只读账号兜底 |
-| 证据应答 | EvidencePack:口径/SQL/血缘链/行数/截断标记,渲染在右侧证据面板 |
-| 审计 | workspace `audit/audit.jsonl`,只追加、写入前脱敏 |
-| 技能 | SKILL.md 即文件,Agent SDK 从工作区自动加载 |
+Harness includes target-native dependencies, so every release artifact is built on the matching operating system and architecture.
 
-## 目录
+## Development and architecture
 
-```
-src/core/     纯 TS 核心逻辑(零 electron 依赖,TDD 主战场)
-src/main/     Electron 主进程:workspace / AgentService / SDK 适配 / IPC
-src/preload/  contextBridge 白名单 API
-src/renderer/ React 六页:对话/语义/技能/插件/审计/设置
-resources/    工作区模板(含内置技能)
-tests/        夹具与 e2e 冒烟
-```
+Contributions are welcome. Start with the public engineering documentation:
+
+- [Development guide](docs/development.md) — setup, validation, patch maintenance, and target-native packaging
+- [Architecture](docs/architecture.md) — runtime flow, persistent data, security boundaries, recovery, mobile access, and updates
+- [Release runbook](docs/release-runbook.md) — signing and publication controls
+- [Preset package format](docs/preset-packages.md) — portable Agent preset contract
+
+Before submitting a change, run `npm test`, `npm run typecheck`, and `npm run build`, then exercise the affected real application flow. Never include real API keys in issues, logs, screenshots, or test data.
+
+## Friends
+
+[dsh-market](https://github.com/dsh-market/dsh-market) is the community plugin market for DeepSeek Harness. Browse and search plugins, preview screenshots, install or update packages, enable or disable plugins, and switch themes from the Harness interface.
+
+## License
+
+DSH Desktop is open source under the [MIT License](LICENSE).
+
+DeepSeek Harness and its dependencies remain subject to their respective upstream licenses and trademark policies. DSH Desktop is an independent community desktop application.
